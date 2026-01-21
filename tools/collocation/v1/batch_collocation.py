@@ -33,7 +33,7 @@ class BatchProcessor:
         # FY3_MWTS-_ORBD_L1_20210701_1455_033KM_V0.HDF
         match = re.search(r'(\d{8})_(\d{4})', str(filename)) # match
         if match:
-            date_str = match.group(1)
+            date_str = match.group(1) # date_str
             time_str = match.group(2)
             return datetime.strptime(date_str + time_str, '%Y%m%d%H%M')
         return None
