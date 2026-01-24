@@ -165,12 +165,12 @@ def split_grib_by_time_alternative(input_file, output_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='将ERA5 GRIB文件按时间分割')
     parser.add_argument('input_file',default="/data1/lrx/obs", help='输入的GRIB文件路径')
-    parser.add_argument('-o', '--output', default='./split_data', 
-                       help='输出目录 (默认: ./split_data)')
+    parser.add_argument('-o', '--output', default='/data2/lrx/era5_2/split_data', 
+                       help='输出目录 (默认: /data2/lrx/era5_2/split_data)')
     parser.add_argument('-f', '--format', choices=['grib', 'netcdf'], 
                        default='grib', help='输出格式 (默认: grib)')
     parser.add_argument('-m', '--method', choices=['xarray', 'pygrib'],
-                       default='xarray', help='处理方法 (默认: xarray)')
+                       default='pygrib', help='处理方法 (默认: pygrib)')
     
     args = parser.parse_args()
     
