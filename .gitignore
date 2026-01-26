@@ -1,0 +1,22 @@
+# 数据和输出
+data_process/
+outputs/
+/home/seu/Fuxi/Unet/satellite_assimilation_v2/figures/
+/home/seu/Fuxi/Unet/satellite_assimilation_v2/outputs/
+/home/seu/Fuxi/Unet/satellite_assimilation_v2/train/outputs/
+# 临时文件
+__pycache__/
+*.pyc
+# 日志文件
+*.log
+# 环境文件
+.env
+.venv
+venv/
+env/
+# Jupyter Notebook 检查点
+.ipynb_checkpoints
+# IDE 配置文件
+.vscode/
+.idea/
+*.iml
