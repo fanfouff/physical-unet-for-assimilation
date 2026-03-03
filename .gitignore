@@ -1,17 +1,15 @@
 # 数据和输出
-data_process/
-outputs/
-/home/seu/Fuxi/Unet/satellite_assimilation_v2/figures/
-/home/seu/Fuxi/Unet/satellite_assimilation_v2/outputs/
-/home/seu/Fuxi/Unet/satellite_assimilation_v2/train/outputs/
+/home/lrx/Unet/satellite_assimilation_v2/experiments/outputs
 # 临时文件
 __pycache__/
 *.pyc
+*.pdf
 # 日志文件
 *.log
 # 环境文件
 .env
 .venv
+.pth
 venv/
 env/
 # Jupyter Notebook 检查点
