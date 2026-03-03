@@ -15,7 +15,7 @@
 # =============================================================================
 
 # 模型checkpoint路径
-CHECKPOINT="/home/seu/Fuxi/Unet/satellite_assimilation_v2/outputs/FY3F_Assimilation_vanilla_unet_concat_auxfalse_maskfalse_20260125_202947/best_model.pth"
+CHECKPOINT="/home/seu/Fuxi/Unet/satellite_assimilation_v2/train_ddp/outputs/FY3F_Assimilation_vanilla_unet_concat_auxfalse_maskfalse_2gpu_20260126_174405/best_model.pth"
 
 # 基准模型checkpoint（可选，留空则不对比）
 BASELINE_CHECKPOINT=""  # 例如: "outputs/baseline/best_model.pth"
@@ -27,7 +27,7 @@ DATA_ROOT="/data2/lrx/era_obs/npz/test" # 格式为.npz文件目录
 STATS_FILE=""  # 留空则自动计算
 
 # 输出目录
-OUTPUT_DIR="figures"
+OUTPUT_DIR="./figures/A1-figures"
 
 # 个例可视化的样本索引
 CASE_STUDY_IDX=0

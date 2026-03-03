@@ -707,6 +707,7 @@ def create_model(
     """
     models = {
         'physics_unet': PhysicsAwareUNet,
+        'pasnet': PhysicsAwareUNet,
         'physics_unet_lite': PhysicsAwareUNetLite,
         'physics_unet_large': PhysicsAwareUNetLarge,
         'vanilla_unet': VanillaUNet

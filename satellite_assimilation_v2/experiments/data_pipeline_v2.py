@@ -376,23 +376,17 @@ class LazySatelliteERA5Dataset(Dataset):
             print(f"  ✓ 保存至: {save_path}")
     
     def _load_raw(self, idx: int) -> Dict[str, np.ndarray]:
+        """加载原始数据 (未标准化)"""
         file_path = self.file_list[idx]
-        # 添加这行打印语句，报错时你就能看到是哪个文件坏了
-        # print(f"Loading: {file_path}") 
         
         if file_path.endswith('.npz'):
             data = np.load(file_path)
-            try:
-                return {
-                    'obs': data['obs'],      
-                    'bkg': data['bkg'],      
-                    'target': data['target'], 
-                    'aux': data.get('aux', None)
-                }
-            except KeyError as e:
-                print(f"\n[ERROR] 文件缺少必要的键: {file_path}")
-                print(f"包含的键有: {data.files}")
-                raise e
+            return {
+                'obs': data['obs'],      # [C_obs, H, W]
+                'bkg': data['bkg'],      # [C_bkg, H, W]
+                'target': data['target'], # [C_bkg, H, W]
+                'aux': data.get('aux', None)  # [C_aux, H, W] 可选
+            }
         elif file_path.endswith('.h5') or file_path.endswith('.hdf5'):
             import h5py
             with h5py.File(file_path, 'r') as f:

@@ -41,6 +41,14 @@ import matplotlib as mpl
 from matplotlib import colors
 import seaborn as sns
 
+
+# 定义要添加的目标路径
+target_path = "/home/seu/Fuxi/Unet/satellite_assimilation_v2/"
+
+# 将路径添加到 sys.path（Python 会优先搜索这个路径）
+if target_path not in sys.path:  # 避免重复添加
+    sys.path.append(target_path)
+
 # 中文字体支持
 plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
