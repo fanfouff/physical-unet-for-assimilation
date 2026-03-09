@@ -61,72 +61,50 @@ class ModelConfig:
 # =============================================================================
 # Part 2: 物理感知标准化器 (Physics-Aware Normalizer) - 增强版
 # =============================================================================
-
 class LevelwiseNormalizer:
     """
-    逐层/逐通道Z-Score标准化器 (增强版)
+    逐层/逐通道 Z-Score 标准化器 (修复版)
     
-    新增功能:
-    - 支持保存/加载统计量
-    - 支持在线更新 (Welford算法)
-    - 支持GPU加速
+    修复: 4D 张量 (N,C,H,W) 的广播问题
     """
-    
+
     def __init__(
-        self, 
-        mean: Optional[np.ndarray] = None,
-        std: Optional[np.ndarray] = None,
+        self,
+        mean=None,
+        std=None,
         eps: float = 1e-8,
-        name: str = "normalizer"
+        name: str = "normalizer",
     ):
         self.mean = mean
         self.std = std
         self.eps = eps
         self.name = name
         self._fitted = mean is not None and std is not None
-        
-        # 用于在线更新的状态
         self._count = None
         self._M2 = None
-    
-    def fit(self, data: Union[np.ndarray, torch.Tensor]) -> 'LevelwiseNormalizer':
-        """从数据计算统计量"""
+
+    def fit(self, data):
         if isinstance(data, torch.Tensor):
             data = data.cpu().numpy()
-        
         if data.ndim == 3:
             data = data[np.newaxis, ...]
-        
         n_channels = data.shape[-3]
         data_flat = data.transpose(0, 2, 3, 1).reshape(-1, n_channels)
-        
         self.mean = np.nanmean(data_flat, axis=0)
         self.std = np.nanstd(data_flat, axis=0)
         self.std = np.where(self.std < self.eps, self.eps, self.std)
-        
         self._fitted = True
         return self
-    
-    def partial_fit(self, data: np.ndarray) -> 'LevelwiseNormalizer':
-        """
-        在线增量更新统计量 (Welford算法)
-        用于处理无法一次性加载的大数据集
-        """
+
+    def partial_fit(self, data):
         if data.ndim == 3:
             data = data[np.newaxis, ...]
-        
         n_channels = data.shape[-3]
-        
-        # 初始化
         if self._count is None:
             self._count = np.zeros(n_channels)
             self.mean = np.zeros(n_channels)
             self._M2 = np.zeros(n_channels)
-        
-        # 展平数据
         data_flat = data.transpose(0, 2, 3, 1).reshape(-1, n_channels)
-        
-        # Welford在线更新
         for i in range(n_channels):
             valid_values = data_flat[:, i][~np.isnan(data_flat[:, i])]
             for x in valid_values:
@@ -135,89 +113,104 @@ class LevelwiseNormalizer:
                 self.mean[i] += delta / self._count[i]
                 delta2 = x - self.mean[i]
                 self._M2[i] += delta * delta2
-        
-        # 更新std
         self.std = np.sqrt(self._M2 / np.maximum(self._count - 1, 1))
         self.std = np.where(self.std < self.eps, self.eps, self.std)
         self._fitted = True
-        
         return self
-    
-    def transform(
-        self, 
-        x: Union[np.ndarray, torch.Tensor],
-        inplace: bool = False
-    ) -> Union[np.ndarray, torch.Tensor]:
-        """应用标准化"""
+
+    # ================================================================
+    # 核心修复: _reshape_stats
+    # ================================================================
+    @staticmethod
+    def _reshape_stats(stat, x_ndim, is_tensor=False):
+        """
+        将 (C,) 的统计量 reshape 为可与 x 广播的形状:
+          x_ndim=4  (N,C,H,W) → (1, C, 1, 1)
+          x_ndim=3  (C,H,W)   → (C, 1, 1)
+          x_ndim=2  (N,C)     → (1, C)
+          x_ndim=1  (C,)      → (C,)
+        """
+        if x_ndim == 4:
+            shape = (1, -1, 1, 1)
+        elif x_ndim == 3:
+            shape = (-1, 1, 1)
+        elif x_ndim == 2:
+            shape = (1, -1)
+        else:
+            shape = (-1,)
+
+        return stat.reshape(shape)
+
+    # ================================================================
+    # 修复后的 transform
+    # ================================================================
+    def transform(self, x, inplace=False):
         if not self._fitted:
             raise RuntimeError(f"[{self.name}] Normalizer not fitted!")
-        
+
         is_tensor = isinstance(x, torch.Tensor)
         device = x.device if is_tensor else None
-        
+
         if is_tensor:
             mean = torch.tensor(self.mean, dtype=x.dtype, device=device)
-            std = torch.tensor(self.std, dtype=x.dtype, device=device)
+            std  = torch.tensor(self.std,  dtype=x.dtype, device=device)
         else:
-            mean, std = self.mean, self.std
+            mean = self.mean.copy()
+            std  = self.std.copy()
             if not inplace:
                 x = x.copy()
-        
-        # 广播调整
-        while mean.ndim < x.ndim:
-            mean = mean[..., np.newaxis] if not is_tensor else mean.unsqueeze(-1)
-            std = std[..., np.newaxis] if not is_tensor else std.unsqueeze(-1)
-        
+
+        mean = self._reshape_stats(mean, x.ndim, is_tensor)
+        std  = self._reshape_stats(std,  x.ndim, is_tensor)
+
         return (x - mean) / std
-    
-    def inverse_transform(
-        self, 
-        x: Union[np.ndarray, torch.Tensor]
-    ) -> Union[np.ndarray, torch.Tensor]:
-        """逆标准化"""
+
+    # ================================================================
+    # 修复后的 inverse_transform
+    # ================================================================
+    def inverse_transform(self, x):
         if not self._fitted:
             raise RuntimeError(f"[{self.name}] Normalizer not fitted!")
-        
+
         is_tensor = isinstance(x, torch.Tensor)
         device = x.device if is_tensor else None
-        
+
         if is_tensor:
             mean = torch.tensor(self.mean, dtype=x.dtype, device=device)
-            std = torch.tensor(self.std, dtype=x.dtype, device=device)
+            std  = torch.tensor(self.std,  dtype=x.dtype, device=device)
         else:
-            mean, std = self.mean, self.std
-        
-        while mean.ndim < x.ndim:
-            mean = mean[..., np.newaxis] if not is_tensor else mean.unsqueeze(-1)
-            std = std[..., np.newaxis] if not is_tensor else std.unsqueeze(-1)
-        
+            mean = self.mean.copy()
+            std  = self.std.copy()
+
+        mean = self._reshape_stats(mean, x.ndim, is_tensor)
+        std  = self._reshape_stats(std,  x.ndim, is_tensor)
+
         return x * std + mean
-    
-    def save(self, path: str) -> None:
-        """保存统计量"""
+
+    # ================================================================
+    # 以下方法保持不变
+    # ================================================================
+    def save(self, path):
         np.savez(path, mean=self.mean, std=self.std, eps=self.eps, name=self.name)
-    
+
     @classmethod
-    def load(cls, path: str) -> 'LevelwiseNormalizer':
-        """加载统计量"""
+    def load(cls, path):
         data = np.load(path)
         return cls(
-            mean=data['mean'],
-            std=data['std'],
-            eps=float(data['eps']),
-            name=str(data['name'])
+            mean=data['mean'], std=data['std'],
+            eps=float(data['eps']), name=str(data['name']),
         )
-    
-    def state_dict(self) -> Dict:
-        return {'mean': self.mean, 'std': self.std, 'eps': self.eps, 'name': self.name}
-    
-    def load_state_dict(self, state: Dict) -> None:
+
+    def state_dict(self):
+        return {'mean': self.mean, 'std': self.std,
+                'eps': self.eps, 'name': self.name}
+
+    def load_state_dict(self, state):
         self.mean = state['mean']
         self.std = state['std']
         self.eps = state.get('eps', 1e-8)
         self.name = state.get('name', 'normalizer')
         self._fitted = True
-
 
 # =============================================================================
 # Part 3: 懒加载数据集 (Lazy Loading Dataset)

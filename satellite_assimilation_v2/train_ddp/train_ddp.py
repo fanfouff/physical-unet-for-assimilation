@@ -209,6 +209,10 @@ def parse_args() -> argparse.Namespace:
                             help='梯度损失权重 (仅combined模式)')
     loss_group.add_argument('--deep_loss_weight', type=float, default=0.3,
                             help='深度监督损失权重')
+    loss_group.add_argument('--use_increment', default=False, action='store_true',
+                            help='训练增量目标 (Δ=target-bkg) 而非绝对温度')
+    loss_group.add_argument('--increment_stats', type=str, default='',
+                            help='增量统计文件路径 (.npz，含inc_mean/inc_std)')
     
     # === 设备配置 ===
     device_group = parser.add_argument_group('设备配置')
@@ -437,6 +441,21 @@ class DDPTrainer:
         self.world_size = world_size
         self.writer = writer
         
+        # 增量训练统计量 (可选)
+        if getattr(args, 'use_increment', False) and args.increment_stats:
+            inc_data = np.load(args.increment_stats)
+            st_data  = np.load(args.stats_file)
+            self._inc_mean = torch.tensor(inc_data['inc_mean'], dtype=torch.float32)
+            self._inc_std  = torch.tensor(inc_data['inc_std'],  dtype=torch.float32)
+            self._bkg_mean = torch.tensor(st_data['bkg_mean'],    dtype=torch.float32)
+            self._bkg_std  = torch.tensor(st_data['bkg_std'],     dtype=torch.float32)
+            self._tgt_mean = torch.tensor(st_data['target_mean'], dtype=torch.float32)
+            self._tgt_std  = torch.tensor(st_data['target_std'],  dtype=torch.float32)
+            print_rank0(f"增量训练模式已启用 (inc_std range: "
+                        f"{inc_data['inc_std'].min():.3f}–{inc_data['inc_std'].max():.3f} K)", rank)
+        else:
+            self._inc_mean = None
+
         # 混合精度
         self.scaler = torch.cuda.amp.GradScaler() if args.amp else None
         
@@ -453,6 +472,17 @@ class DDPTrainer:
             with open(self.exp_dir / 'config.json', 'w') as f:
                 json.dump(vars(args), f, indent=2)
     
+    def _to_inc_target(self, bkg: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """将归一化绝对温度目标转换为归一化增量目标.
+        bkg, target: (B, C, H, W) 归一化值
+        returns: (B, C, H, W) 归一化增量
+        """
+        def v(t): return t.to(bkg.device).view(1, -1, 1, 1)
+        bkg_phys = bkg    * v(self._bkg_std) + v(self._bkg_mean)
+        tgt_phys = target * v(self._tgt_std) + v(self._tgt_mean)
+        inc_phys = tgt_phys - bkg_phys
+        return (inc_phys - v(self._inc_mean)) / v(self._inc_std)
+
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         """训练一个epoch"""
         self.model.train()
@@ -474,6 +504,9 @@ class DDPTrainer:
                 aux = aux.to(self.device, non_blocking=True)
             
             self.optimizer.zero_grad()
+
+            if self._inc_mean is not None:
+                target = self._to_inc_target(bkg, target)
             
             if self.scaler:
                 with torch.cuda.amp.autocast():
@@ -548,6 +581,9 @@ class DDPTrainer:
             aux = batch.get('aux')
             if aux is not None:
                 aux = aux.to(self.device, non_blocking=True)
+
+            if self._inc_mean is not None:
+                target = self._to_inc_target(bkg, target)
             
             output = self.model(obs, bkg, mask, aux)
             if isinstance(output, tuple):
@@ -724,12 +760,27 @@ def main():
             compute_stats=True
         )
     else:
-        file_list = sorted(data_root.glob('**/*.npz'))
-        if not file_list:
+        _all_files = sorted(f for f in data_root.glob('**/*.npz')
+                            if f.name not in ('stats.npz', 'dataset_split.json', 'increment_stats.npz'))
+        if not _all_files:
             raise ValueError(f"数据目录中未找到.npz文件: {data_root}")
         
+        # 过滤全零目标的损坏文件 (每个进程独立过滤，速度快)
+        file_list = []
+        n_corrupt = 0
+        for _f in _all_files:
+            try:
+                _d = np.load(str(_f))
+                if _d['target'].sum() != 0:
+                    file_list.append(str(_f))
+                else:
+                    n_corrupt += 1
+            except Exception:
+                n_corrupt += 1
+        print_rank0(f"  有效文件: {len(file_list)}, 损坏文件: {n_corrupt}", rank)
+        
         dataset = LazySatelliteERA5Dataset(
-            file_list=[str(f) for f in file_list],
+            file_list=file_list,
             use_aux=args.use_aux
         )
         

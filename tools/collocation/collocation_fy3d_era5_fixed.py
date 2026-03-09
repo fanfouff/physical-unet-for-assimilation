@@ -530,6 +530,8 @@ class DataCollocation:
         
         self.X = X_clean
         self.Y = Y_clean
+        self.lat = sat_points['lat'][valid_samples]
+        self.lon = sat_points['lon'][valid_samples]
         self.pressure_levels = self.era5_reader.data['pressure']
         
         return X_clean, Y_clean
@@ -541,6 +543,8 @@ class DataCollocation:
         np.save(f'{output_prefix}_X.npy', self.X)
         np.save(f'{output_prefix}_Y.npy', self.Y)
         np.save(f'{output_prefix}_pressure.npy', self.pressure_levels)
+        np.save(f'{output_prefix}_lat.npy', self.lat)
+        np.save(f'{output_prefix}_lon.npy', self.lon)
         
         print(f"   ✓ {output_prefix}_X.npy")
         print(f"   ✓ {output_prefix}_Y.npy")
