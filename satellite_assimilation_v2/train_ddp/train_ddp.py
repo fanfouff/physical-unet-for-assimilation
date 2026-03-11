@@ -167,7 +167,7 @@ def parse_args() -> argparse.Namespace:
     model_group = parser.add_argument_group('模型配置')
     model_group.add_argument('--model', type=str, default='physics_unet',
                              choices=['physics_unet', 'physics_unet_lite', 
-                                     'physics_unet_large', 'vanilla_unet'],
+                                     'physics_unet_large', 'vanilla_unet', 'fuxi_da'],
                              help='模型类型')
     model_group.add_argument('--fusion_mode', type=str, default='gated',
                              choices=['concat', 'add', 'gated'],
@@ -178,6 +178,8 @@ def parse_args() -> argparse.Namespace:
     model_group.add_argument('--mask_aware', type=str, default='true',
                              choices=['true', 'false'],
                              help='是否使用掩码感知')
+    model_group.add_argument('--use_spectral_stem', type=str, default='true',
+                             help='是否使用SpectralAdapterStemV2 (false=消融V4: 标准卷积Stem)')
     model_group.add_argument('--deep_supervision', type=str, default='false',
                              choices=['true', 'false'],
                              help='是否使用深度监督')
@@ -243,6 +245,7 @@ def parse_args() -> argparse.Namespace:
     # 转换字符串布尔值
     args.use_aux = args.use_aux.lower() == 'true'
     args.mask_aware = args.mask_aware.lower() == 'true'
+    args.use_spectral_stem = args.use_spectral_stem.lower() == 'true'
     args.deep_supervision = args.deep_supervision.lower() == 'true'
     args.amp = args.amp.lower() == 'true'
     args.tensorboard = args.tensorboard.lower() == 'true'
@@ -869,11 +872,12 @@ def main():
         from backbone import create_model, UNetConfig
     
     # 模型配置
-    if args.model != 'vanilla_unet':
+    if args.model not in ('vanilla_unet', 'fuxi_da'):
         config = UNetConfig(
             fusion_mode=args.fusion_mode,
             use_aux=args.use_aux,
             mask_aware=args.mask_aware,
+            use_spectral_stem=args.use_spectral_stem,
             deep_supervision=args.deep_supervision
         )
         model = create_model(args.model, config=config)
