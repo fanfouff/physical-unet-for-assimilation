@@ -970,12 +970,15 @@ class SpectralAdapterStemV2(nn.Module):
             
         elif fusion_mode == 'gated':
             # 门控融合: 学习动态权重
-            gate_input = latent_channels * 2 + aux_embed_dim
+            # 修复: 去掉BN，用tanh确保初始gate≈0.5（对称融合）
+            gate_in_ch = latent_channels * 2 + aux_embed_dim
             self.gate_net = nn.Sequential(
-                nn.Conv2d(gate_input, latent_channels, 1, bias=False),
-                nn.BatchNorm2d(latent_channels),
-                nn.Sigmoid()
+                nn.Conv2d(gate_in_ch, latent_channels, 1, bias=True),
+                nn.Tanh()                 # output ∈ (-1,1)  →  gate = 0.5+0.5*tanh ∈ (0,1)
             )
+            # 初始化: weight=0, bias=0 → tanh(0)=0 → gate=0.5（初始均匀融合）
+            nn.init.zeros_(self.gate_net[0].weight)
+            nn.init.zeros_(self.gate_net[0].bias)
             self.fusion = nn.Sequential(
                 nn.Conv2d(latent_channels, latent_channels, 3, padding=1, bias=False),
                 nn.BatchNorm2d(latent_channels),
@@ -1076,14 +1079,14 @@ class SpectralAdapterStemV2(nn.Module):
             fused = self.fusion(fused)
             
         elif self.fusion_mode == 'gated':
-            # 门控融合
-            gate_input = [obs_feat, bkg_feat]
+            # 门控融合 (修复版: tanh-based gate, 无硬mask截断)
+            gate_raw = [obs_feat, bkg_feat]
             if aux_feat is not None:
-                gate_input.append(aux_feat)
-            gate_input = torch.cat(gate_input, dim=1)
+                gate_raw.append(aux_feat)
+            gate_input = torch.cat(gate_raw, dim=1)
             
-            gate = self.gate_net(gate_input)  # [B, C_lat, H, W], range [0,1]
-            gate = gate * mask_expanded  # 缺测区域gate为0
+            # gate ∈ (0,1)，初始≈0.5; obs_gated已在缺测处为0，无需再mask gate
+            gate = 0.5 + 0.5 * self.gate_net(gate_input)
             
             fused = bkg_feat * (1 - gate) + obs_gated * gate
             fused = self.fusion(fused)

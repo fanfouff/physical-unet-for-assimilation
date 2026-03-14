@@ -1,0 +1,22 @@
+\begin{table}[t]
+\centering
+\caption{Overall comparison on test set. Lower RMSE/MAE is better.}
+\begin{tabular}{llccccc}
+\toprule
+Method & Type & RMSE & MAE & Bias & Corr & Improve(\%)\\
+\midrule
+Background (ERA5) & bkg & 1.8230 & 1.2177 & +0.0020 & 0.99624 & +0.00\\
+OI/1DVar (B2) & oi & 1.8836 & 1.2798 & -0.0014 & -- & -3.32\\
+Ours (V1) & ours & 1.1696 & 0.8054 & +0.0229 & 0.99858 & +35.84\\
+Full Variant (Ablation) & ablation & 1.2674 & 0.8650 & +0.0596 & 0.99832 & +30.48\\
+w/o MaskConv (V2) & ablation & 1.2150 & 0.8337 & +0.0366 & 0.99849 & +33.35\\
+w/o GatedFusion (V3) & ablation & 1.3734 & 0.9445 & +0.0830 & 0.99736 & +24.66\\
+w/o SpectralStem (V4) & ablation & 1.4265 & 0.9690 & +0.0828 & 0.99732 & +21.75\\
+VanillaUNet (B3) & compare & 1.4491 & 1.0093 & +0.1664 & 0.99684 & +20.51\\
+FuXi-DA (B4) & compare & 1.4095 & 0.9995 & +0.1043 & 0.99654 & +22.68\\
+AttentionUNet (B5) & compare & 1.5092 & 1.0508 & +0.1778 & 0.99666 & +17.21\\
+PixelMLP (B6) & compare & 1.6959 & 1.1654 & +0.1388 & 0.99628 & +6.97\\
+ResUNet (B7) & compare & 1.5407 & 1.0784 & +0.1783 & 0.99630 & +15.49\\
+\bottomrule
+\end{tabular}
+\end{table}

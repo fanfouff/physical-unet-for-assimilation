@@ -141,7 +141,7 @@ def parse_args() -> argparse.Namespace:
     
     # === 实验配置 ===
     exp_group = parser.add_argument_group('实验配置')
-    exp_group.add_argument('--exp_name', type=str, default='experiment_ddp',
+    exp_group.add_argument('--exp_name', type=str, default='experiment_ddp_noaux',
                            help='实验名称')
     exp_group.add_argument('--output_dir', type=str, default='outputs',
                            help='输出目录')
@@ -167,7 +167,7 @@ def parse_args() -> argparse.Namespace:
     model_group = parser.add_argument_group('模型配置')
     model_group.add_argument('--model', type=str, default='physics_unet',
                              choices=['physics_unet', 'physics_unet_lite', 
-                                     'physics_unet_large', 'vanilla_unet', 'fuxi_da'],
+                                     'physics_unet_large', 'vanilla_unet'],
                              help='模型类型')
     model_group.add_argument('--fusion_mode', type=str, default='gated',
                              choices=['concat', 'add', 'gated'],

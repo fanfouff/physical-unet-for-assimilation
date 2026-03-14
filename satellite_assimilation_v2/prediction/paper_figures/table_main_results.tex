@@ -1,0 +1,26 @@
+\begin{table*}[t]
+\centering
+\caption{Overall quantitative comparison of all methods on the test set (387 samples).}
+\label{tab:main_results}
+\begin{tabular}{llccccc}
+\toprule
+Category & Method & RMSE (K) $\downarrow$ & MAE (K) $\downarrow$ & |Bias| (K) $\downarrow$ & Corr. $\uparrow$ & Improv. (\%) $\uparrow$ \\
+\midrule
+  Reference & Background (ERA5) & 1.8230 & 1.2177 & 0.0020 & 0.996200 & +0.00 \\
+   & OI/1DVar (B2) & 1.8836 & 1.2798 & 0.0014 & 0.996000 & -3.32 \\
+\midrule
+  Baselines & PixelMLP & 1.6959 & 1.1654 & 0.1388 & 0.996300 & +6.97 \\
+   & ResUNet & 1.5407 & 1.0784 & 0.1783 & 0.996300 & +15.49 \\
+   & VanillaUNet & 1.4491 & 1.0093 & 0.1664 & 0.996800 & +20.51 \\
+   & AttentionUNet & 1.5092 & 1.0508 & 0.1778 & 0.996700 & +17.21 \\
+   & FuXi-DA & 1.4095 & 0.9995 & 0.1043 & 0.996500 & +22.68 \\
+\midrule
+  Ablation & w/o SpectralStem & 1.4265 & 0.9690 & 0.0828 & 0.997300 & +21.75 \\
+   & w/o GatedFusion & 1.3734 & 0.9445 & 0.0830 & 0.997400 & +24.66 \\
+   & Full Variant & 1.2674 & 0.8650 & 0.0596 & 0.998300 & +30.48 \\
+   & w/o MaskConv & 1.2150 & 0.8337 & 0.0366 & 0.998500 & +33.35 \\
+\midrule
+  \textbf{Ours} & Ours (V1) & \textbf{1.1696} & \textbf{0.8054} & 0.0229 & \textbf{0.998600} & \textbf{+35.84} \\
+\bottomrule
+\end{tabular}
+\end{table*}

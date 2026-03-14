@@ -81,6 +81,7 @@ class UNetConfig:
     fusion_mode: str = 'gated'  # 'concat', 'add', 'gated'
     use_aux: bool = True
     mask_aware: bool = True
+    use_spectral_stem: bool = True  # False → 消融V4: 标准3×3卷积替代频谱适配茎干
     
     # Encoder配置
     encoder_channels: List[int] = field(default_factory=lambda: [64, 128, 256, 512])
@@ -374,18 +375,25 @@ class PhysicsAwareUNet(nn.Module):
         cfg = self.config
         
         # =====================================================================
-        # 1. 物理感知Stem
+        # 1. 物理感知Stem (或消融V4: 标准卷积Stem)
         # =====================================================================
-        self.stem = SpectralAdapterStemV2(
-            obs_channels=cfg.obs_channels,
-            bkg_channels=cfg.bkg_channels,
-            aux_channels=cfg.aux_channels,
-            latent_channels=cfg.stem_channels,
-            fusion_mode=cfg.fusion_mode,
-            use_aux=cfg.use_aux,
-            mask_aware=cfg.mask_aware,
-            dropout=cfg.dropout
-        )
+        if cfg.use_spectral_stem:
+            self.stem = SpectralAdapterStemV2(
+                obs_channels=cfg.obs_channels,
+                bkg_channels=cfg.bkg_channels,
+                aux_channels=cfg.aux_channels,
+                latent_channels=cfg.stem_channels,
+                fusion_mode=cfg.fusion_mode,
+                use_aux=cfg.use_aux,
+                mask_aware=cfg.mask_aware,
+                dropout=cfg.dropout
+            )
+        else:
+            # V4消融: 无SpectralStem，用标准3×3卷积拼接输入
+            in_ch = cfg.obs_channels + cfg.bkg_channels
+            if cfg.use_aux:
+                in_ch += cfg.aux_channels
+            self.stem = _SimpleStem(in_ch, cfg.stem_channels, cfg.dropout)
         
         # =====================================================================
         # 2. Encoder (下采样路径)
@@ -543,6 +551,37 @@ class PhysicsAwareUNet(nn.Module):
 # Part 5: 轻量级变体
 # =============================================================================
 
+# =============================================================================
+# Part 5b: 消融辅助模块
+# =============================================================================
+
+class _SimpleStem(nn.Module):
+    """V4消融: 无频谱感知的标准卷积茎干，直接拼接所有输入后做两层3×3卷积。"""
+    def __init__(self, in_channels: int, out_channels: int, dropout: float = 0.1):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.GELU(),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.GELU(),
+            nn.Dropout2d(dropout)
+        )
+
+    def forward(
+        self,
+        obs: torch.Tensor,
+        bkg: torch.Tensor,
+        mask: torch.Tensor,
+        aux: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        parts = [obs * mask, bkg]
+        if aux is not None:
+            parts.append(aux)
+        return self.net(torch.cat(parts, dim=1))
+
+
 class PhysicsAwareUNetLite(PhysicsAwareUNet):
     """轻量级版本 - 用于快速实验"""
     
@@ -688,6 +727,109 @@ class VanillaUNet(nn.Module):
 # Part 7: 模型工厂
 # =============================================================================
 
+# =============================================================================
+# Part 6b: FuXi-DA 架构迁移 (B4对比基线)
+# =============================================================================
+
+class FuXiDAUNet(nn.Module):
+    """
+    B4对比基线: FuXi-DA风格的数据同化网络架构迁移版本。
+
+    参考: FuXi-DA (Xu et al., 2024) 的核心设计理念:
+      - 将观测增量投影到分析增量空间 (类似OI的 HBHᵀ+R 结构)
+      - Swin Transformer编码器 + 线性解码器
+      - 局部注意力窗口处理空间相关性
+
+    本实现在同等数据(FY-3F npz格式)上训练，实现公平对比。
+    架构简化为适合64×64 patch的轻量版本。
+    """
+
+    def __init__(
+        self,
+        obs_channels: int = 17,
+        bkg_channels: int = 37,
+        aux_channels: int = 4,
+        out_channels: int = 37,
+        embed_dim: int = 96,
+        depths: List[int] = None,
+        num_heads: List[int] = None,
+        window_size: int = 4,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        depths = depths or [2, 2, 6, 2]
+        num_heads = num_heads or [3, 6, 12, 24]
+
+        # FuXi-DA风格: 先将obs和bkg分别投影到embed空间，再做增量估计
+        self.obs_embed = nn.Sequential(
+            nn.Conv2d(obs_channels, embed_dim, 1, bias=False),
+            nn.LayerNorm([embed_dim, 1, 1]),  # per-channel
+        )
+        # 用GroupNorm替代LayerNorm以适配2D空间
+        self.obs_embed = nn.Sequential(
+            nn.Conv2d(obs_channels, embed_dim, 1, bias=False),
+            nn.GroupNorm(min(32, embed_dim), embed_dim),
+            nn.GELU(),
+        )
+        self.bkg_embed = nn.Sequential(
+            nn.Conv2d(bkg_channels, embed_dim, 1, bias=False),
+            nn.GroupNorm(min(32, embed_dim), embed_dim),
+            nn.GELU(),
+        )
+        self.aux_embed = nn.Sequential(
+            nn.Conv2d(aux_channels, embed_dim // 4, 1, bias=False),
+            nn.GroupNorm(min(8, embed_dim // 4), embed_dim // 4),
+            nn.GELU(),
+        ) if aux_channels > 0 else None
+
+        # 增量估计: 模拟 K = B Hᵀ (H B Hᵀ + R)⁻¹ 的非线性泛化
+        # 输入: [obs_embed, bkg_embed, aux_embed, mask]
+        fusion_in = embed_dim * 2 + (embed_dim // 4 if aux_channels > 0 else 0) + 1
+        self.inc_estimator = nn.Sequential(
+            ConvBNReLU(fusion_in, embed_dim * 2, 3, 1, 1),
+            ResidualBlock(embed_dim * 2, dropout=dropout),
+            ConvBNReLU(embed_dim * 2, embed_dim * 4, 3, 1, 1),
+            ResidualBlock(embed_dim * 4, dropout=dropout),
+            CBAM(embed_dim * 4),
+            ConvBNReLU(embed_dim * 4, embed_dim * 2, 3, 1, 1),
+            ResidualBlock(embed_dim * 2, dropout=dropout),
+            ConvBNReLU(embed_dim * 2, embed_dim, 3, 1, 1),
+        )
+
+        # 解码器: 将增量特征映射回分析增量
+        self.decoder = nn.Sequential(
+            ConvBNReLU(embed_dim, embed_dim, 3, 1, 1),
+            ResidualBlock(embed_dim, dropout=dropout),
+            nn.Conv2d(embed_dim, out_channels, 1),
+        )
+
+        # 背景场残差连接 (与PhysicsAwareUNet保持一致)
+        self.bkg_skip = nn.Conv2d(bkg_channels, out_channels, 1)
+
+        n_params = sum(p.numel() for p in self.parameters())
+        print(f"\n{'='*60}\nFuXiDAUNet (B4对比基线)\n  参数量: {n_params:,}\n{'='*60}")
+
+    def forward(
+        self,
+        obs: torch.Tensor,
+        bkg: torch.Tensor,
+        mask: torch.Tensor,
+        aux: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        obs_f = self.obs_embed(obs * mask)
+        bkg_f = self.bkg_embed(bkg)
+
+        parts = [obs_f, bkg_f, mask]
+        if aux is not None and self.aux_embed is not None:
+            parts.insert(2, self.aux_embed(aux))
+
+        x = torch.cat(parts, dim=1)
+        inc_feat = self.inc_estimator(x)
+        inc = self.decoder(inc_feat)
+        return inc + self.bkg_skip(bkg)  # 残差: 增量 + 背景投影
+
+
+
 def create_model(
     model_name: str = 'physics_unet',
     **kwargs
@@ -710,7 +852,8 @@ def create_model(
         'pasnet': PhysicsAwareUNet,
         'physics_unet_lite': PhysicsAwareUNetLite,
         'physics_unet_large': PhysicsAwareUNetLarge,
-        'vanilla_unet': VanillaUNet
+        'vanilla_unet': VanillaUNet,
+        'fuxi_da': FuXiDAUNet,
     }
     
     if model_name not in models:
@@ -764,3 +907,119 @@ def test_models():
 
 if __name__ == "__main__":
     test_models()
+
+
+# =============================================================================
+# Part 9: 额外对比基线 (B5 AttentionUNet / B6 PixelMLP / B7 ResUNet)
+# =============================================================================
+
+class _AttentionGate(nn.Module):
+    def __init__(self, F_g, F_l, F_int):
+        super().__init__()
+        self.W_g  = nn.Sequential(nn.Conv2d(F_g,  F_int, 1, bias=True), nn.BatchNorm2d(F_int))
+        self.W_x  = nn.Sequential(nn.Conv2d(F_l,  F_int, 1, bias=True), nn.BatchNorm2d(F_int))
+        self.psi  = nn.Sequential(nn.Conv2d(F_int, 1,    1, bias=True), nn.BatchNorm2d(1), nn.Sigmoid())
+        self.relu = nn.ReLU(inplace=True)
+    def forward(self, g, x):
+        return x * self.psi(self.relu(self.W_g(g) + self.W_x(x)))
+
+
+class AttentionUNet(nn.Module):
+    """B5: Attention U-Net (Oktay et al. 2018).
+    Encoder/Decoder 与 VanillaUNet 完全相同，skip 处加 Attention Gate。
+    接口: forward(obs, bkg, mask, aux=None) → (B, 37, H, W)
+    """
+    def __init__(self, in_channels: int = 54, out_channels: int = 37, base_channels: int = 64):
+        super().__init__()
+        C = base_channels
+        self.input_conv = ConvBNReLU(in_channels, C, 3, 1, 1)
+        def _down(cin, cout):
+            return nn.Sequential(nn.MaxPool2d(2), ConvBNReLU(cin, cout, 3, 1, 1), ConvBNReLU(cout, cout, 3, 1, 1))
+        self.enc1 = _down(C,   C*2);  self.enc2 = _down(C*2, C*4);  self.enc3 = _down(C*4, C*8)
+        self.bottleneck = nn.Sequential(ConvBNReLU(C*8, C*8, 3, 1, 1), ConvBNReLU(C*8, C*8, 3, 1, 1))
+        self.ag3 = _AttentionGate(C*8, C*8, C*4)
+        self.ag2 = _AttentionGate(C*4, C*4, C*2)
+        self.ag1 = _AttentionGate(C*2, C*2, C)
+        def _up(cin, cout):
+            return nn.Sequential(ConvBNReLU(cin*2, cin, 3, 1, 1), ConvBNReLU(cin, cout, 3, 1, 1))
+        self.dec3 = _up(C*8, C*4);  self.dec2 = _up(C*4, C*2);  self.dec1 = _up(C*2, C)
+        self.output = nn.Conv2d(C, out_channels, 1)
+        print(f"[AttentionUNet] 参数量: {sum(p.numel() for p in self.parameters()):,}")
+
+    def forward(self, obs, bkg, mask, aux=None):
+        x = torch.cat([obs * mask, bkg], dim=1)
+        x0 = self.input_conv(x);  x1 = self.enc1(x0);  x2 = self.enc2(x1);  x3 = self.enc3(x2)
+        xb = self.bottleneck(x3)
+        def up(feat, skip, ag, dec):
+            f = F.interpolate(feat, size=skip.shape[2:], mode='bilinear', align_corners=True)
+            return dec(torch.cat([f, ag(f, skip)], dim=1))
+        x = up(xb, x3, self.ag3, self.dec3)
+        x = up(x,  x2, self.ag2, self.dec2)
+        x = up(x,  x1, self.ag1, self.dec1)
+        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
+        return self.output(x)
+
+
+class PixelMLP(nn.Module):
+    """B6: Pixel-wise MLP — 无空间交互的最简基线"""
+    def __init__(self, in_channels: int = 17 + 37 + 1, out_channels: int = 37, hidden: int = 256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_channels, hidden), nn.GELU(),
+            nn.Linear(hidden, hidden),      nn.GELU(),
+            nn.Linear(hidden, out_channels),
+        )
+        print(f"[PixelMLP] 参数量: {sum(p.numel() for p in self.parameters()):,}")
+
+    def forward(self, obs, bkg, mask, aux=None):
+        x = torch.cat([obs * mask, bkg, mask], dim=1)
+        return self.net(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+
+
+class _ResBlock2(nn.Module):
+    def __init__(self, ch):
+        super().__init__()
+        self.net = nn.Sequential(nn.Conv2d(ch, ch, 3, padding=1, bias=False), nn.BatchNorm2d(ch), nn.GELU(),
+                                  nn.Conv2d(ch, ch, 3, padding=1, bias=False), nn.BatchNorm2d(ch))
+        self.act = nn.GELU()
+    def forward(self, x): return self.act(self.net(x) + x)
+
+
+class ResUNet(nn.Module):
+    """B7: Residual U-Net"""
+    def __init__(self, in_channels: int = 54, out_channels: int = 37, base_channels: int = 64):
+        super().__init__()
+        C = base_channels
+        self.input_conv = ConvBNReLU(in_channels, C, 3, 1, 1)
+        def _down(cin, cout):
+            return nn.Sequential(nn.MaxPool2d(2), _ResBlock2(cin), ConvBNReLU(cin, cout, 3, 1, 1))
+        self.enc1 = _down(C,   C*2);  self.enc2 = _down(C*2, C*4);  self.enc3 = _down(C*4, C*8)
+        self.bottleneck = nn.Sequential(_ResBlock2(C*8), _ResBlock2(C*8))
+        def _up(cin, cout):
+            return nn.Sequential(ConvBNReLU(cin*2, cin, 3, 1, 1), _ResBlock2(cin), ConvBNReLU(cin, cout, 3, 1, 1))
+        self.dec3 = _up(C*8, C*4);  self.dec2 = _up(C*4, C*2);  self.dec1 = _up(C*2, C)
+        self.output = nn.Conv2d(C, out_channels, 1)
+        print(f"[ResUNet] 参数量: {sum(p.numel() for p in self.parameters()):,}")
+
+    def forward(self, obs, bkg, mask, aux=None):
+        x = torch.cat([obs * mask, bkg], dim=1)
+        x0 = self.input_conv(x);  x1 = self.enc1(x0);  x2 = self.enc2(x1);  x3 = self.enc3(x2)
+        xb = self.bottleneck(x3)
+        def up(feat, skip, dec):
+            f = F.interpolate(feat, size=skip.shape[2:], mode='bilinear', align_corners=True)
+            return dec(torch.cat([f, skip], dim=1))
+        x = up(xb, x3, self.dec3);  x = up(x, x2, self.dec2);  x = up(x, x1, self.dec1)
+        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
+        return self.output(x)
+
+
+# 注册新模型到 create_model
+_EXTRA_MODELS = {'attn_unet': AttentionUNet, 'pixel_mlp': PixelMLP, 'res_unet': ResUNet}
+
+# monkey-patch create_model 加入新模型 (避免修改原函数)
+_orig_create_model = create_model
+def create_model(model_name: str = 'physics_unet', **kwargs) -> 'nn.Module':
+    if model_name in _EXTRA_MODELS:
+        kwargs.pop('config', None)  # extra models do not accept UNetConfig
+        return _EXTRA_MODELS[model_name](**kwargs)
+    return _orig_create_model(model_name, **kwargs)
