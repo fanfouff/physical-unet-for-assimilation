@@ -141,7 +141,7 @@ def parse_args() -> argparse.Namespace:
     
     # === 实验配置 ===
     exp_group = parser.add_argument_group('实验配置')
-    exp_group.add_argument('--exp_name', type=str, default='experiment_ddp_noaux',
+    exp_group.add_argument('--exp_name', type=str, default='experiment_ddp',
                            help='实验名称')
     exp_group.add_argument('--output_dir', type=str, default='outputs',
                            help='输出目录')
@@ -166,8 +166,9 @@ def parse_args() -> argparse.Namespace:
     # === 模型配置 ===
     model_group = parser.add_argument_group('模型配置')
     model_group.add_argument('--model', type=str, default='physics_unet',
-                             choices=['physics_unet', 'physics_unet_lite', 
-                                     'physics_unet_large', 'vanilla_unet'],
+                             choices=['physics_unet', 'physics_unet_lite',
+                                     'physics_unet_large', 'vanilla_unet', 'fuxi_da',
+                                     'attn_unet', 'pixel_mlp', 'res_unet'],
                              help='模型类型')
     model_group.add_argument('--fusion_mode', type=str, default='gated',
                              choices=['concat', 'add', 'gated'],
@@ -467,6 +468,10 @@ class DDPTrainer:
         
         # 最佳验证损失
         self.best_val_loss = float('inf')
+        # CSV 训练历史
+        self._csv_path = None
+        self._csv_buf = []
+
         
         # 输出目录 (仅主进程创建)
         self.exp_dir = Path(args.output_dir) / args.exp_name
@@ -655,6 +660,16 @@ class DDPTrainer:
             print(f"总轮数: {self.args.epochs}")
             print("=" * 70)
         
+        # 初始化 CSV 日志
+        if is_main_process(self.rank):
+            self._csv_path = self.exp_dir / "train_history.csv"
+            import csv as _csv, io as _io
+            _write_header = not self._csv_path.exists()
+            self._csv_file = open(self._csv_path, "a", newline="")
+            self._csv_writer = _csv.writer(self._csv_file)
+            if _write_header:
+                self._csv_writer.writerow(["epoch","train_loss","val_loss","global_rmse","lr"])
+
         for epoch in range(start_epoch, self.args.epochs):
             if is_main_process(self.rank):
                 print(f"\nEpoch {epoch + 1}/{self.args.epochs}")
@@ -691,6 +706,18 @@ class DDPTrainer:
                             epoch, self.best_val_loss, self.args
                         )
                     
+                    # CSV 历史记录
+                    if self._csv_path is not None:
+                        _lr = self.scheduler.get_last_lr()[0] if self.scheduler else self.args.lr
+                        self._csv_writer.writerow([
+                            epoch + 1,
+                            f"{train_metrics['loss']:.6f}",
+                            f"{val_metrics['loss']:.6f}",
+                            f"{val_metrics['global_rmse']:.4f}",
+                            f"{_lr:.2e}",
+                        ])
+                        self._csv_file.flush()
+
                     # TensorBoard
                     if self.writer:
                         self.writer.add_scalar('Loss/train', train_metrics['loss'], epoch)
@@ -714,6 +741,8 @@ class DDPTrainer:
         if is_main_process(self.rank):
             print("\n" + "=" * 70)
             print("训练完成!")
+            if self._csv_path is not None:
+                self._csv_file.close()
             print(f"最佳验证损失: {self.best_val_loss:.6f}")
             print(f"模型保存至: {self.exp_dir}")
             print("=" * 70)
@@ -881,6 +910,10 @@ def main():
             deep_supervision=args.deep_supervision
         )
         model = create_model(args.model, config=config)
+    elif args.model == 'fuxi_da':
+        # FuXi-DA uses aux_channels to size its first fusion conv. Keep it
+        # consistent with runtime aux usage to avoid channel mismatch.
+        model = create_model(args.model, aux_channels=4 if args.use_aux else 0)
     else:
         model = create_model(args.model)
     
