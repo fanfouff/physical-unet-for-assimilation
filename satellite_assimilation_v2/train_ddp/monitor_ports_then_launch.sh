@@ -12,12 +12,10 @@ STATS_FILE="/data2/lrx/npz_128_real/stats.npz"
 INC_STATS="/data2/lrx/npz_128_real/increment_stats.npz"
 COMMON_ARGS="--data_root $DATA_ROOT --stats_file $STATS_FILE --increment_stats $INC_STATS --use_increment --batch_size 16 --epochs 200"
 
-WATCH_PORTS=(29512 29813 29516 29619 29417)
+WATCH_PORTS=(29615 29616)
 NEW_CMDS=(
-"CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node=2 --master_port=29814 train_ddp.py --exp_name compare_b4_fuxi_da_128 $COMMON_ARGS --model fuxi_da --use_aux false --deep_supervision false"
-"CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node=2 --master_port=29615 train_ddp.py --exp_name compare_b5_attn_unet_128 $COMMON_ARGS --model attn_unet --use_aux false --deep_supervision false"
-"CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node=2 --master_port=29616 train_ddp.py --exp_name compare_b6_pixel_mlp_128 $COMMON_ARGS --model pixel_mlp --use_aux false --deep_supervision false"
-"CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node=2 --master_port=29617 train_ddp.py --exp_name compare_b7_res_unet_128 $COMMON_ARGS --model res_unet --use_aux false --deep_supervision false"
+"CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node=2 --master_port=29624 train_ddp.py   --exp_name compare_b4_fuxi_da_128   --data_root /data2/lrx/npz_128_real   --stats_file /data2/lrx/npz_128_real/stats.npz   --increment_stats /data2/lrx/npz_128_real/increment_stats.npz   --use_increment --epochs 200   --batch_size 8 --grad_accum_steps 2   --model fuxi_da --
+use_aux false --deep_supervision false"
 )
 
 is_port_running() {

@@ -202,6 +202,8 @@ def parse_args() -> argparse.Namespace:
                              help='预热轮数')
     train_group.add_argument('--grad_clip', type=float, default=1.0,
                              help='梯度裁剪阈值')
+    train_group.add_argument('--grad_accum_steps', type=int, default=1,
+                             help='梯度累积步数 (显存受限时用于保持有效批大小)')
     
     # === 损失函数配置 ===
     loss_group = parser.add_argument_group('损失函数配置')
@@ -252,6 +254,9 @@ def parse_args() -> argparse.Namespace:
     args.tensorboard = args.tensorboard.lower() == 'true'
     args.sync_bn = args.sync_bn.lower() == 'true'
     args.find_unused_parameters = args.find_unused_parameters.lower() == 'true'
+
+    if args.grad_accum_steps < 1:
+        raise ValueError('--grad_accum_steps 必须 >= 1')
     
     return args
 
@@ -501,7 +506,10 @@ class DDPTrainer:
         total_loss = 0
         loss_components = {'base': 0, 'grad': 0, 'deep': 0}
         n_batches = len(self.train_loader)
-        
+        accum_steps = max(1, self.args.grad_accum_steps)
+
+        self.optimizer.zero_grad()
+
         for i, batch in enumerate(self.train_loader):
             obs = batch['obs'].to(self.device, non_blocking=True)
             bkg = batch['bkg'].to(self.device, non_blocking=True)
@@ -510,9 +518,6 @@ class DDPTrainer:
             aux = batch.get('aux')
             if aux is not None:
                 aux = aux.to(self.device, non_blocking=True)
-            
-            self.optimizer.zero_grad()
-
             if self._inc_mean is not None:
                 target = self._to_inc_target(bkg, target)
             
@@ -525,16 +530,20 @@ class DDPTrainer:
                         pred, deep_preds = output, None
                     loss, loss_dict = self.criterion(pred, target, deep_preds)
                 
-                self.scaler.scale(loss).backward()
-                
-                if self.args.grad_clip > 0:
-                    self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.args.grad_clip
-                    )
-                
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                loss_to_backward = loss / accum_steps
+                self.scaler.scale(loss_to_backward).backward()
+
+                should_step = ((i + 1) % accum_steps == 0) or (i + 1 == n_batches)
+                if should_step:
+                    if self.args.grad_clip > 0:
+                        self.scaler.unscale_(self.optimizer)
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.args.grad_clip
+                        )
+
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
             else:
                 output = self.model(obs, bkg, mask, aux)
                 if isinstance(output, tuple):
@@ -543,14 +552,19 @@ class DDPTrainer:
                     pred, deep_preds = output, None
                 
                 loss, loss_dict = self.criterion(pred, target, deep_preds)
-                loss.backward()
-                
-                if self.args.grad_clip > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.args.grad_clip
-                    )
-                
-                self.optimizer.step()
+
+                loss_to_backward = loss / accum_steps
+                loss_to_backward.backward()
+
+                should_step = ((i + 1) % accum_steps == 0) or (i + 1 == n_batches)
+                if should_step:
+                    if self.args.grad_clip > 0:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.args.grad_clip
+                        )
+
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
             
             total_loss += loss_dict['total']
             for k in loss_components:
@@ -656,7 +670,8 @@ class DDPTrainer:
             print(f"开始分布式训练: {self.args.exp_name}")
             print(f"GPU数量: {self.world_size}")
             print(f"每GPU批大小: {self.args.batch_size}")
-            print(f"有效批大小: {self.args.batch_size * self.world_size}")
+            print(f"梯度累积步数: {self.args.grad_accum_steps}")
+            print(f"有效批大小: {self.args.batch_size * self.world_size * self.args.grad_accum_steps}")
             print(f"总轮数: {self.args.epochs}")
             print("=" * 70)
         
