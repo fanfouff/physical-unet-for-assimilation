@@ -142,7 +142,7 @@ def parse_args() -> argparse.Namespace:
         description='Inference Analysis V3 — 反归一化 + 真实气压层 + 期刊标准可视化',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument('--checkpoint',   type=str, required=True,  help='模型 checkpoint')
+    p.add_argument('--checkpoint',   type=str, default="/home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/ours_noaux_full_128/best_model.pth",required=True,  help='模型 checkpoint')
     p.add_argument('--data_root',    type=str, required=True,  help='测试数据根目录')
     p.add_argument('--output_dir',   type=str, default=f'figures_v3/{TIMESTAMP}')
     p.add_argument('--stats_file',   type=str, default=None,   help='标准化统计量 .npz')
