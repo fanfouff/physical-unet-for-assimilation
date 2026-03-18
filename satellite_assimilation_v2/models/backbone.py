@@ -730,18 +730,35 @@ class VanillaUNet(nn.Module):
 # =============================================================================
 # Part 6b: FuXi-DA 架构迁移 (B4对比基线)
 # =============================================================================
-
 class FuXiDAUNet(nn.Module):
     """
-    B4对比基线: FuXi-DA风格的数据同化网络架构迁移版本。
+    B4对比基线: FuXi-DA风格的数据同化网络 (层次化CNN版本)。
 
-    参考: FuXi-DA (Xu et al., 2024) 的核心设计理念:
-      - 将观测增量投影到分析增量空间 (类似OI的 HBHᵀ+R 结构)
-      - Swin Transformer编码器 + 线性解码器
-      - 局部注意力窗口处理空间相关性
+    参考: FuXi-DA (Xu et al., 2024; https://github.com/xuxiaoze/FuXi-DA)
+    原始FuXi-DA使用Swin Transformer + Patch Merging实现层次化编码,
+    本实现将其迁移为纯CNN架构(Conv + ResBlock + CBAM), 适配64×64 patch。
 
-    本实现在同等数据(FY-3F npz格式)上训练，实现公平对比。
-    架构简化为适合64×64 patch的轻量版本。
+    架构对应关系:
+    ┌────────────────────┬─────────────────────────────────────┐
+    │   FuXi-DA 原始      │   本CNN迁移版本                      │
+    ├────────────────────┼─────────────────────────────────────┤
+    │ Patch Embedding    │ 1×1 Conv 独立 Embedding + 拼接融合    │
+    │ Swin-T Block       │ ResidualBlock + SE Attention         │
+    │ Patch Merging      │ Stride-2 ConvBNReLU (空间下采样)      │
+    │ Linear Decoder     │ Bilinear Upsample + Skip + Conv      │
+    │ Residual Output    │ 增量 + bkg_skip (相同)                │
+    └────────────────────┴─────────────────────────────────────┘
+
+    空间分辨率:  H×W  ──▶  H/2×W/2  ──▶  H/4×W/4  ──▶  H/2×W/2  ──▶  H×W
+    通道数:       C0   ──▶    C1     ──▶    C2     ──▶    C1     ──▶   C0
+                (96)       (192)        (384)        (192)        (96)
+
+    修改要点 (相对原始全分辨率版本):
+    1. 编码器: 两次 stride=2 卷积, 将 384通道卷积从 64×64 降至 16×16,
+       FLOPs 降低 16×
+    2. 解码器: 双线性上采样 + skip connection 恢复空间分辨率
+    3. CBAM 注意力: 在 16×16 (256位置) 上计算, 而非 64×64 (4096位置),
+       空间注意力矩阵从 4096² 降至 256², 内存降低 256×
     """
 
     def __init__(
@@ -752,20 +769,16 @@ class FuXiDAUNet(nn.Module):
         out_channels: int = 37,
         embed_dim: int = 96,
         depths: List[int] = None,
-        num_heads: List[int] = None,
-        window_size: int = 4,
+        num_heads: List[int] = None,   # 保留API兼容, CNN版本不使用
+        window_size: int = 4,           # 保留API兼容, CNN版本不使用
         dropout: float = 0.1,
     ):
         super().__init__()
-        depths = depths or [2, 2, 6, 2]
-        num_heads = num_heads or [3, 6, 12, 24]
+        depths = depths or [2, 1, 1]   # 3级编码器各阶段的 ResBlock 数量
+        C0, C1, C2 = embed_dim, embed_dim * 2, embed_dim * 4  # 96, 192, 384
 
-        # FuXi-DA风格: 先将obs和bkg分别投影到embed空间，再做增量估计
-        self.obs_embed = nn.Sequential(
-            nn.Conv2d(obs_channels, embed_dim, 1, bias=False),
-            nn.LayerNorm([embed_dim, 1, 1]),  # per-channel
-        )
-        # 用GroupNorm替代LayerNorm以适配2D空间
+        # ==================== 1. 独立 Embedding ====================
+        # 对应 FuXi-DA 的输入投影: obs 和 bkg 分别映射到 embed 空间
         self.obs_embed = nn.Sequential(
             nn.Conv2d(obs_channels, embed_dim, 1, bias=False),
             nn.GroupNorm(min(32, embed_dim), embed_dim),
@@ -782,32 +795,59 @@ class FuXiDAUNet(nn.Module):
             nn.GELU(),
         ) if aux_channels > 0 else None
 
-        # 增量估计: 模拟 K = B Hᵀ (H B Hᵀ + R)⁻¹ 的非线性泛化
-        # 输入: [obs_embed, bkg_embed, aux_embed, mask]
+        # 融合输入通道 = obs_embed + bkg_embed + [aux_embed] + mask
         fusion_in = embed_dim * 2 + (embed_dim // 4 if aux_channels > 0 else 0) + 1
-        self.inc_estimator = nn.Sequential(
-            ConvBNReLU(fusion_in, embed_dim * 2, 3, 1, 1),
-            ResidualBlock(embed_dim * 2, dropout=dropout),
-            ConvBNReLU(embed_dim * 2, embed_dim * 4, 3, 1, 1),
-            ResidualBlock(embed_dim * 4, dropout=dropout),
-            CBAM(embed_dim * 4),
-            ConvBNReLU(embed_dim * 4, embed_dim * 2, 3, 1, 1),
-            ResidualBlock(embed_dim * 2, dropout=dropout),
-            ConvBNReLU(embed_dim * 2, embed_dim, 3, 1, 1),
+
+        # ==================== 2. 层次化编码器 ====================
+        # 对应 FuXi-DA 的 Swin-T 多阶段 + Patch Merging
+
+        # Stage 0: 全分辨率 H×W, C0 通道
+        self.enc0 = nn.Sequential(
+            ConvBNReLU(fusion_in, C0, 3, 1, 1),
+            *[ResidualBlock(C0, dropout=dropout) for _ in range(depths[0])]
+        )
+        # Stage 1: H/2 × W/2, C1 通道 (Stride-2 ≈ Patch Merging)
+        self.down1 = ConvBNReLU(C0, C1, 3, stride=2, padding=1)
+        self.enc1 = nn.Sequential(
+            *[ResidualBlock(C1, dropout=dropout) for _ in range(depths[1])]
+        )
+        # Stage 2 (瓶颈): H/4 × W/4, C2 通道 + 通道-空间注意力
+        self.down2 = ConvBNReLU(C1, C2, 3, stride=2, padding=1)
+        self.enc2 = nn.Sequential(
+            *[ResidualBlock(C2, dropout=dropout) for _ in range(depths[2])],
+            CBAM(C2),      # 在 16×16 上计算注意力, 而非原来的 64×64
         )
 
-        # 解码器: 将增量特征映射回分析增量
-        self.decoder = nn.Sequential(
-            ConvBNReLU(embed_dim, embed_dim, 3, 1, 1),
-            ResidualBlock(embed_dim, dropout=dropout),
-            nn.Conv2d(embed_dim, out_channels, 1),
+        # ==================== 3. 层次化解码器 ====================
+        # 对应 FuXi-DA 的 Linear Decoder, 但增加 Skip Connection
+
+        # Up Stage 1: H/4 → H/2, 与 enc1 的 skip 拼接后融合
+        self.dec_fuse1 = ConvBNReLU(C2 + C1, C1, 1, 1, 0)   # 1×1 融合
+        self.dec1 = ResidualBlock(C1, dropout=dropout)
+
+        # Up Stage 2: H/2 → H, 与 enc0 的 skip 拼接后融合
+        self.dec_fuse2 = ConvBNReLU(C1 + C0, C0, 1, 1, 0)   # 1×1 融合
+        self.dec2 = ResidualBlock(C0, dropout=dropout)
+
+        # ==================== 4. 输出头 (增量映射) ====================
+        self.output_head = nn.Sequential(
+            ConvBNReLU(C0, C0, 3, 1, 1),
+            nn.Conv2d(C0, out_channels, 1),
         )
 
-        # 背景场残差连接 (与PhysicsAwareUNet保持一致)
+        # ==================== 5. 背景残差连接 ====================
         self.bkg_skip = nn.Conv2d(bkg_channels, out_channels, 1)
 
+        # ==================== 模型信息 ====================
         n_params = sum(p.numel() for p in self.parameters())
-        print(f"\n{'='*60}\nFuXiDAUNet (B4对比基线)\n  参数量: {n_params:,}\n{'='*60}")
+        print(f"\n{'='*60}")
+        print(f"FuXiDAUNet (B4对比基线 - 层次化CNN版本)")
+        print(f"  embed_dim: {embed_dim}")
+        print(f"  通道级数: {C0} → {C1} → {C2}")
+        print(f"  分辨率级数: H×W → H/2×W/2 → H/4×W/4")
+        print(f"  编码器深度(ResBlocks/stage): {depths}")
+        print(f"  参数量: {n_params:,}")
+        print(f"{'='*60}")
 
     def forward(
         self,
@@ -816,19 +856,44 @@ class FuXiDAUNet(nn.Module):
         mask: torch.Tensor,
         aux: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        obs_f = self.obs_embed(obs * mask)
-        bkg_f = self.bkg_embed(bkg)
+        """
+        Args:
+            obs:  观测场  [B, 17, H, W]
+            bkg:  背景场  [B, 37, H, W]
+            mask: 有效掩码 [B, 1,  H, W]
+            aux:  辅助特征 [B, 4,  H, W] (可选)
+
+        Returns:
+            分析场 [B, 37, H, W] = 估计增量 + 背景投影
+        """
+        # ---- 1. 独立 Embedding ----
+        obs_f = self.obs_embed(obs * mask)          # [B, C0, H, W]
+        bkg_f = self.bkg_embed(bkg)                 # [B, C0, H, W]
 
         parts = [obs_f, bkg_f, mask]
         if aux is not None and self.aux_embed is not None:
-            parts.insert(2, self.aux_embed(aux))
+            parts.insert(2, self.aux_embed(aux))    # [B, C0/4, H, W]
+        x = torch.cat(parts, dim=1)                 # [B, fusion_in, H, W]
 
-        x = torch.cat(parts, dim=1)
-        inc_feat = self.inc_estimator(x)
-        inc = self.decoder(inc_feat)
-        return inc + self.bkg_skip(bkg)  # 残差: 增量 + 背景投影
+        # ---- 2. 层次化编码 (逐级空间下采样) ----
+        s0 = self.enc0(x)                            # [B, C0,  H,    W   ]
+        s1 = self.enc1(self.down1(s0))               # [B, C1,  H/2,  W/2 ]
+        s2 = self.enc2(self.down2(s1))               # [B, C2,  H/4,  W/4 ]
 
+        # ---- 3. 层次化解码 (逐级上采样 + Skip Connection) ----
+        d1 = F.interpolate(s2, size=s1.shape[2:],
+                           mode='bilinear', align_corners=True)
+        d1 = self.dec1(self.dec_fuse1(
+            torch.cat([d1, s1], dim=1)))             # [B, C1,  H/2,  W/2 ]
 
+        d0 = F.interpolate(d1, size=s0.shape[2:],
+                           mode='bilinear', align_corners=True)
+        d0 = self.dec2(self.dec_fuse2(
+            torch.cat([d0, s0], dim=1)))             # [B, C0,  H,    W   ]
+
+        # ---- 4. 增量 + 背景残差 ----
+        inc = self.output_head(d0)                   # [B, out_ch, H, W]
+        return inc + self.bkg_skip(bkg)
 
 def create_model(
     model_name: str = 'physics_unet',

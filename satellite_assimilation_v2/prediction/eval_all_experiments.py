@@ -501,8 +501,11 @@ def plot_resources(rows, out_png: Path):
     axes[2].grid(axis="x", alpha=0.25)
     axes[2].invert_yaxis()
     axes[2].legend(fontsize=9)
+    # 👇 修改这里，添加 if 检查
     for b, v in zip(bars3_t, mem_train):
-        axes[2].text(v, b.get_y() + b.get_height() / 2, f" {v:.0f}", va="center", fontsize=8)
+        if _is_finite(v):  # 过滤掉 NaN 的情况
+            axes[2].text(v, b.get_y() + b.get_height() / 2, f" {v:.0f}", va="center", fontsize=8)
+  
     
     fig.suptitle("Model Resources and Computation Overhead", fontsize=14)
     plt.tight_layout()
@@ -658,7 +661,7 @@ def plot_rmse_vs_params(rows, out_png: Path):
     plt.savefig(out_png, dpi=260, bbox_inches="tight")
     plt.close()
     print(f"    [OK] RMSE vs Params 散点图已保存: {out_png}")
-    
+
 def plot_vertical_rmse(rows, out_png: Path):
     profiles = []
     for r in rows:

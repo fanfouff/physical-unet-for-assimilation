@@ -497,16 +497,16 @@ class DDPTrainer:
         return (inc_phys - v(self._inc_mean)) / v(self._inc_std)
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
-        """训练一个epoch"""
+        """训练一个epoch"""        # ✨ 正确：在 def 下方敲 4 个空格，或者保证它和 self.model 这一行左边对齐
         self.model.train()
-        
-        # 设置epoch以打乱数据
         self.train_sampler.set_epoch(epoch)
         
         total_loss = 0
+        valid_batches = 0
         loss_components = {'base': 0, 'grad': 0, 'deep': 0}
         n_batches = len(self.train_loader)
         accum_steps = max(1, self.args.grad_accum_steps)
+        nan_count = 0
 
         self.optimizer.zero_grad()
 
@@ -521,6 +521,11 @@ class DDPTrainer:
             if self._inc_mean is not None:
                 target = self._to_inc_target(bkg, target)
             
+            # 输入检查（backward 之前，安全跳过）
+            if torch.isnan(target).any() or torch.isinf(target).any():
+                nan_count += 1
+                continue
+            
             if self.scaler:
                 with torch.cuda.amp.autocast():
                     output = self.model(obs, bkg, mask, aux)
@@ -530,6 +535,12 @@ class DDPTrainer:
                         pred, deep_preds = output, None
                     loss, loss_dict = self.criterion(pred, target, deep_preds)
                 
+                # ★ NaN 检查在 backward 之前 → 安全跳过，不污染 scaler
+                if torch.isnan(loss) or torch.isinf(loss):
+                    nan_count += 1
+                    # 不调用 backward，scaler 状态干净，直接 continue
+                    continue
+                
                 loss_to_backward = loss / accum_steps
                 self.scaler.scale(loss_to_backward).backward()
 
@@ -537,9 +548,12 @@ class DDPTrainer:
                 if should_step:
                     if self.args.grad_clip > 0:
                         self.scaler.unscale_(self.optimizer)
-                        torch.nn.utils.clip_grad_norm_(
+                        grad_norm = torch.nn.utils.clip_grad_norm_(
                             self.model.parameters(), self.args.grad_clip
                         )
+                        # ★ 梯度 NaN 时：不能 continue，必须走完 step+update
+                        #   scaler.step 内部会检测 inf/nan 梯度并自动跳过 optimizer.step
+                        #   所以这里不需要手动跳过
 
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
@@ -553,39 +567,53 @@ class DDPTrainer:
                 
                 loss, loss_dict = self.criterion(pred, target, deep_preds)
 
+                # NaN 检查在 backward 之前
+                if torch.isnan(loss) or torch.isinf(loss):
+                    nan_count += 1
+                    continue
+
                 loss_to_backward = loss / accum_steps
                 loss_to_backward.backward()
 
                 should_step = ((i + 1) % accum_steps == 0) or (i + 1 == n_batches)
                 if should_step:
                     if self.args.grad_clip > 0:
-                        torch.nn.utils.clip_grad_norm_(
+                        grad_norm = torch.nn.utils.clip_grad_norm_(
                             self.model.parameters(), self.args.grad_clip
                         )
+                        if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+                            self.optimizer.zero_grad()
+                            nan_count += 1
+                            continue
 
                     self.optimizer.step()
                     self.optimizer.zero_grad()
             
             total_loss += loss_dict['total']
+            valid_batches += 1
             for k in loss_components:
                 loss_components[k] += loss_dict.get(k, 0)
             
-            # 日志 (仅主进程)
             if (i + 1) % self.args.log_interval == 0 and is_main_process(self.rank):
                 print(f"  [{i+1}/{n_batches}] Loss: {loss_dict['total']:.6f}")
         
-        # 平均损失
-        avg_loss = total_loss / n_batches
-        for k in loss_components:
-            loss_components[k] /= n_batches
+        if valid_batches > 0:
+            avg_loss = total_loss / valid_batches
+            for k in loss_components:
+                loss_components[k] /= valid_batches
+        else:
+            avg_loss = float('nan')
         
-        # 跨进程同步损失 (用于准确的日志记录)
+        if nan_count > 0 and is_main_process(self.rank):
+            print(f"  ⚠ 跳过 {nan_count}/{n_batches} 个 NaN batch")
+        
         if self.world_size > 1:
             avg_loss_tensor = torch.tensor(avg_loss, device=self.device)
-            avg_loss = reduce_tensor(avg_loss_tensor, self.world_size).item()
+            if not torch.isnan(avg_loss_tensor):
+                avg_loss = reduce_tensor(avg_loss_tensor, self.world_size).item()
         
         return {'loss': avg_loss, **loss_components}
-    
+        
     @torch.no_grad()
     def validate(self, epoch: int) -> Dict[str, float]:
         """验证 (所有进程参与，结果同步)"""
