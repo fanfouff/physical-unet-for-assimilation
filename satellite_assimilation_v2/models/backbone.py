@@ -1078,8 +1078,84 @@ class ResUNet(nn.Module):
         return self.output(x)
 
 
+
+class FengWuBaseline(nn.Module):
+    """B8: FengWu-style hierarchical CNN baseline for assimilation."""
+
+    def __init__(
+        self,
+        obs_channels: int = 17,
+        bkg_channels: int = 37,
+        aux_channels: int = 4,
+        out_channels: int = 37,
+        embed_dim: int = 96,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.aux_channels = max(0, aux_channels)
+
+        in_ch = obs_channels + bkg_channels + 1 + self.aux_channels
+        c0, c1, c2 = embed_dim, embed_dim * 2, embed_dim * 4
+
+        self.stem = nn.Sequential(
+            ConvBNReLU(in_ch, c0, 3, 1, 1),
+            ResidualBlock(c0, dropout=dropout),
+            ResidualBlock(c0, dropout=dropout),
+        )
+        self.down1 = nn.Sequential(
+            ConvBNReLU(c0, c1, 3, stride=2, padding=1),
+            ResidualBlock(c1, dropout=dropout),
+        )
+        self.down2 = nn.Sequential(
+            ConvBNReLU(c1, c2, 3, stride=2, padding=1),
+            ResidualBlock(c2, dropout=dropout),
+            CBAM(c2),
+        )
+
+        self.up1_fuse = ConvBNReLU(c2 + c1, c1, 1, 1, 0)
+        self.up1_refine = ResidualBlock(c1, dropout=dropout)
+        self.up0_fuse = ConvBNReLU(c1 + c0, c0, 1, 1, 0)
+        self.up0_refine = ResidualBlock(c0, dropout=dropout)
+
+        self.output_head = nn.Sequential(
+            ConvBNReLU(c0, c0, 3, 1, 1),
+            nn.Conv2d(c0, out_channels, 1),
+        )
+        self.bkg_skip = nn.Conv2d(bkg_channels, out_channels, 1)
+
+        print(f"[FengWuBaseline] 参数量: {sum(p.numel() for p in self.parameters()):,}")
+
+    def forward(self, obs, bkg, mask, aux=None):
+        parts = [obs * mask, bkg, mask]
+        if self.aux_channels > 0:
+            if aux is None:
+                aux = torch.zeros(
+                    obs.shape[0], self.aux_channels, obs.shape[2], obs.shape[3],
+                    dtype=obs.dtype, device=obs.device
+                )
+            parts.append(aux)
+
+        x = torch.cat(parts, dim=1)
+
+        s0 = self.stem(x)
+        s1 = self.down1(s0)
+        s2 = self.down2(s1)
+
+        d1 = F.interpolate(s2, size=s1.shape[2:], mode='bilinear', align_corners=True)
+        d1 = self.up1_refine(self.up1_fuse(torch.cat([d1, s1], dim=1)))
+
+        d0 = F.interpolate(d1, size=s0.shape[2:], mode='bilinear', align_corners=True)
+        d0 = self.up0_refine(self.up0_fuse(torch.cat([d0, s0], dim=1)))
+
+        out = self.output_head(d0)
+        return out + self.bkg_skip(bkg)
 # 注册新模型到 create_model
-_EXTRA_MODELS = {'attn_unet': AttentionUNet, 'pixel_mlp': PixelMLP, 'res_unet': ResUNet}
+_EXTRA_MODELS = {
+    'attn_unet': AttentionUNet,
+    'pixel_mlp': PixelMLP,
+    'res_unet': ResUNet,
+    'fengwu': FengWuBaseline,
+}
 
 # monkey-patch create_model 加入新模型 (避免修改原函数)
 _orig_create_model = create_model

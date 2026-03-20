@@ -168,7 +168,7 @@ def parse_args() -> argparse.Namespace:
     model_group.add_argument('--model', type=str, default='physics_unet',
                              choices=['physics_unet', 'physics_unet_lite',
                                      'physics_unet_large', 'vanilla_unet', 'fuxi_da',
-                                     'attn_unet', 'pixel_mlp', 'res_unet'],
+                                     'attn_unet', 'pixel_mlp', 'res_unet', 'fengwu'],
                              help='模型类型')
     model_group.add_argument('--fusion_mode', type=str, default='gated',
                              choices=['concat', 'add', 'gated'],
@@ -944,7 +944,7 @@ def main():
         from backbone import create_model, UNetConfig
     
     # 模型配置
-    if args.model not in ('vanilla_unet', 'fuxi_da'):
+    if args.model not in ('vanilla_unet', 'fuxi_da', 'fengwu'):
         config = UNetConfig(
             fusion_mode=args.fusion_mode,
             use_aux=args.use_aux,
@@ -953,7 +953,7 @@ def main():
             deep_supervision=args.deep_supervision
         )
         model = create_model(args.model, config=config)
-    elif args.model == 'fuxi_da':
+    elif args.model in ('fuxi_da', 'fengwu'):
         # FuXi-DA uses aux_channels to size its first fusion conv. Keep it
         # consistent with runtime aux usage to avoid channel mismatch.
         model = create_model(args.model, aux_channels=4 if args.use_aux else 0)

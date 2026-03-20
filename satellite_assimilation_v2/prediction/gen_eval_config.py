@@ -8,7 +8,7 @@ gen_eval_config.py — 自动扫描实验输出目录，生成评估所需的 YA
     --test_root /data2/lrx/npz_64_real/test \
     --stats_file /data2/lrx/npz_64_real/stats.npz \
     --increment_stats /data2/lrx/npz_64_real/increment_stats.npz \
-    --output_yaml eval_config_128.yaml
+    --output_yaml eval_config_neurocomputing.yaml
 
 也可以指定多个 --exp_root 来扫描多个目录。
 """
@@ -146,9 +146,9 @@ def scan_experiments(exp_roots: list, ckpt_name: str = "best_model.pth") -> list
             exp_dir = ckpt_path.parent
             dir_name = exp_dir.name
 
-            # 精确匹配
+            # 精确匹配 (使用 copy 防止修改原始字典)
             if dir_name in KNOWN_EXPERIMENTS:
-                meta = dict(KNOWN_EXPERIMENTS[dir_name])
+                meta = KNOWN_EXPERIMENTS[dir_name].copy()
             else:
                 meta = infer_experiment(dir_name)
 
@@ -248,12 +248,12 @@ def main():
     )
     p.add_argument(
         "--output_dir",
-        default="./figures_ablation_comparison_v3",
+        default="./figures_neurocomputing_eval", # [修改处] 与自动化脚本保持一致
         help="评估结果输出目录"
     )
     p.add_argument(
         "--output_yaml",
-        default="eval_config.yaml",
+        default="eval_config_neurocomputing.yaml", # [修改处] 默认输出名更清晰
         help="输出的 YAML 文件路径"
     )
     p.add_argument("--device", default="cuda")
@@ -290,6 +290,7 @@ def main():
         f.write("# ====================================================\n")
         f.write("# eval_all_experiments.py 配置文件\n")
         f.write(f"# 自动生成 by gen_eval_config.py\n")
+        f.write(f"# 目标期刊: Neurocomputing\n")
         f.write(f"# 实验数: {len(experiments)}\n")
         f.write("# ====================================================\n\n")
         yaml.dump(cfg, f, Dumper=PrettyDumper,
