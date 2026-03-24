@@ -1,0 +1,25 @@
+\begin{table}[htbp]
+\centering
+\caption{Paired bootstrap test: Ours vs. each method. $\Delta$ = RMSE(Ours) $-$ RMSE(Other); negative means Ours is better.}
+\begin{tabular}{lcccc}
+\toprule
+Method & $\Delta$ RMSE (K) & 95\% CI & $p$-value & Sig. \\
+\midrule
+Background (ERA5) & -0.7149 & [-0.7944, -0.6444] & 0.0000 & $\checkmark$ \\
+Ablation-v1\_noaux\_mse & -0.0786 & [-0.1053, -0.0572] & 0.0000 & $\checkmark$ \\
+Ablation-v2\_noaux\_no\_deep\_supervision\_64 & -0.1166 & [-0.1329, -0.1010] & 0.0000 & $\checkmark$ \\
+Ablation-v3\_fusion\_add\_no\_deepsupervision\_64 & -0.1727 & [-0.2221, -0.1346] & 0.0000 & $\checkmark$ \\
+Ablation-v4\_noaux\_spectral\_stem\_64 & -0.5079 & [-0.5841, -0.4426] & 0.0000 & $\checkmark$ \\
+Ablation-v5\_noaux\_no\_mask\_aware\_64 & -0.0802 & [-0.0918, -0.0683] & 0.0000 & $\checkmark$ \\
+Ablation-v6\_noaux\_no\_mask\_aware\_64 & -0.1770 & [-0.2081, -0.1503] & 0.0000 & $\checkmark$ \\
+Baseline-compare\_b10\_with\_mamba & -0.0165 & [-0.0288, -0.0051] & 0.0014 & $\checkmark$ \\
+Baseline-compare\_b3\_vanilla\_unet\_64 & -0.3388 & [-0.4288, -0.2586] & 0.0000 & $\checkmark$ \\
+Baseline-compare\_b4\_fuxi\_da\_64 & -0.2315 & [-0.3276, -0.1483] & 0.0000 & $\checkmark$ \\
+Baseline-compare\_b4\_fuxi\_da\_64\_tttf & -0.1658 & [-0.2440, -0.0967] & 0.0000 & $\checkmark$ \\
+Baseline-compare\_b5\_attn\_unet\_64 & -0.3830 & [-0.4811, -0.2969] & 0.0000 & $\checkmark$ \\
+Baseline-compare\_b6\_pixel\_mlp\_64 & -0.5878 & [-0.6789, -0.5078] & 0.0000 & $\checkmark$ \\
+Baseline-compare\_b7\_res\_unet\_64 & -0.4389 & [-0.5474, -0.3415] & 0.0000 & $\checkmark$ \\
+Baseline-compare\_b9\_fengwu\_64 & -0.1665 & [-0.2499, -0.0958] & 0.0000 & $\checkmark$ \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,18 @@
+id,label,type,rmse,mae,bias,corr,improve_pct,n_files,params_m,gflops_inf,mem_inf_mb,mem_train_mb
+bkg,Background (ERA5),bkg,1.8230,1.2177,0.0020,0.9962,0.0000,387,,,,
+oi,OI/1DVar (B2),oi,1.8836,1.2798,-0.0014,nan,-3.3248,387,,,,
+ours_with_full,Ours-ours_with_full,ours,1.1081,0.7726,0.0645,0.9988,39.2166,387,27.6902,4.7922,126.3398,nan
+v1_noaux_mse,Ablation-v1_noaux_mse,ablation,1.1867,0.8206,0.0424,0.9986,34.9073,387,27.6902,4.7922,126.0898,nan
+v2_noaux_no_deep_supervision_64,Ablation-v2_noaux_no_deep_supervision_64,ablation,1.2247,0.8470,0.0847,0.9985,32.8193,387,27.6902,4.7922,231.8511,nan
+v3_fusion_add_no_deepsupervision_64,Ablation-v3_fusion_add_no_deepsupervision_64,ablation,1.2809,0.8795,0.0658,0.9982,29.7407,387,27.6902,4.7922,231.8511,nan
+v4_noaux_spectral_stem_64,Ablation-v4_noaux_spectral_stem_64,ablation,1.6160,1.1074,0.0894,0.9967,11.3541,387,27.7018,4.8940,126.1279,nan
+v5_noaux_no_mask_aware_64,Ablation-v5_noaux_no_mask_aware_64,ablation,1.1883,0.8177,0.0588,0.9986,34.8175,387,27.6926,4.8122,126.1636,nan
+v6_noaux_no_mask_aware_64,Ablation-v6_noaux_no_mask_aware_64,ablation,1.2851,0.8822,0.0933,0.9983,29.5065,387,27.6926,4.8122,126.1636,nan
+compare_b10_with_mamba,Baseline-compare_b10_with_mamba,compare,1.1246,0.7806,0.0332,0.9987,38.3095,387,27.6902,4.7922,126.0898,nan
+compare_b3_vanilla_unet_64,Baseline-compare_b3_vanilla_unet_64,compare,1.4469,1.0060,0.1450,0.9970,20.6342,387,13.2752,6.3676,180.4888,nan
+compare_b4_fuxi_da_64,Baseline-compare_b4_fuxi_da_64,compare,1.3396,0.9471,0.1038,0.9969,26.5182,387,5.9302,11.5436,163.0171,nan
+compare_b4_fuxi_da_64_tttf,Baseline-compare_b4_fuxi_da_64_tttf,compare,1.2739,0.8989,0.0981,0.9975,30.1197,387,5.9511,11.7142,54.5239,nan
+compare_b5_attn_unet_64,Baseline-compare_b5_attn_unet_64,compare,1.4911,1.0364,0.1622,0.9968,18.2053,387,17.4941,4.6138,98.4390,nan
+compare_b6_pixel_mlp_64,Baseline-compare_b6_pixel_mlp_64,compare,1.6959,1.1654,0.1388,0.9963,6.9750,387,0.0896,0.7298,19.7485,nan
+compare_b7_res_unet_64,Baseline-compare_b7_res_unet_64,compare,1.5470,1.0795,0.2046,0.9964,15.1398,387,26.5159,6.4782,133.4873,nan
+compare_b9_fengwu_64,Baseline-compare_b9_fengwu_64,compare,1.2746,0.8837,0.1429,0.9976,30.0821,387,5.8089,10.5527,47.9756,nan

@@ -1,0 +1,27 @@
+\begin{table}[htbp]
+\centering
+\caption{RMSE by atmospheric layer group (K). Strat: 1--100\,hPa; Trop: 100--500\,hPa; Low: 500--1000\,hPa.}
+\begin{tabular}{llcccc}
+\toprule
+Method & Type & Stratosphere & Troposphere & Lower Trop. & Global \\
+\midrule
+Background (ERA5) & bkg & 2.1357 & 1.5314 & 2.3039 & 2.0506 \\
+OI/1DVar (B2) & oi & 2.2158 & 1.5603 & 2.3333 & 2.0954 \\
+Ours-ours\_with\_full & ours & 1.0374 & 0.7903 & 1.4371 & 1.1588 \\
+Ablation-v1\_noaux\_mse & ablation & 1.1439 & 0.8624 & 1.5675 & 1.2673 \\
+Ablation-v2\_noaux\_no\_deep\_supervision\_64 & ablation & 1.1686 & 0.8705 & 1.5787 & 1.2813 \\
+Ablation-v3\_fusion\_add\_no\_deepsupervision\_64 & ablation & 1.3594 & 0.9441 & 1.7445 & 1.4311 \\
+Ablation-v4\_noaux\_spectral\_stem\_64 & ablation & 1.9598 & 1.3531 & 2.0674 & 1.8490 \\
+Ablation-v5\_noaux\_no\_mask\_aware\_64 & ablation & 1.0664 & 0.8322 & 1.5618 & 1.2381 \\
+Ablation-v6\_noaux\_no\_mask\_aware\_64 & ablation & 1.2885 & 0.9388 & 1.6722 & 1.3745 \\
+Baseline-compare\_b10\_with\_mamba & compare & 1.0664 & 0.8043 & 1.4722 & 1.1870 \\
+Baseline-compare\_b3\_vanilla\_unet\_64 & compare & 1.9725 & 1.3613 & 1.8614 & 1.7642 \\
+Baseline-compare\_b4\_fuxi\_da\_64 & compare & 1.8625 & 1.4753 & 1.7497 & 1.7086 \\
+Baseline-compare\_b4\_fuxi\_da\_64\_tttf & compare & 1.7958 & 1.3210 & 1.5317 & 1.5584 \\
+Baseline-compare\_b5\_attn\_unet\_64 & compare & 2.0093 & 1.4646 & 1.9490 & 1.8379 \\
+Baseline-compare\_b6\_pixel\_mlp\_64 & compare & 2.3079 & 1.6077 & 1.9781 & 1.9845 \\
+Baseline-compare\_b7\_res\_unet\_64 & compare & 2.1363 & 1.6438 & 1.9886 & 1.9399 \\
+Baseline-compare\_b9\_fengwu\_64 & compare & 1.8120 & 1.1470 & 1.6784 & 1.5841 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -27,8 +27,9 @@ import argparse
 import json
 import sys
 import warnings
+import re
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 
 import matplotlib
 matplotlib.use("Agg")
@@ -59,6 +60,70 @@ REPRESENTATIVE_LEVELS = {
     'low_trop':     (850, 30),  # 850 hPa, index 30
 }
 
+# 图表开关键名
+PLOT_OPTIONS = [
+    "tables",
+    "rmse_bar",
+    "improve_bar",
+    "combined",
+    "vertical",
+    "loss",
+    "resources",
+    "rmse_vs_params",
+    "grouped",
+    "significance",
+    "sample_panels",
+    "spatial_maps",
+    "extreme_cases",
+    "error_distribution",
+    "latency",
+    "missing_rate",      # 新增
+    "se_channels",       # 新增
+    "gap_robustness",    # 新增
+    "latex_draft",
+]
+
+
+def _parse_csv_set(value: str) -> Set[str]:
+    if not value:
+        return set()
+    return {x.strip() for x in value.split(",") if x.strip()}
+
+
+def resolve_plot_selection(raw_plots: str) -> Set[str]:
+    """
+    将 --plots 解析为集合。
+    支持: all 或逗号分隔的键名。
+    """
+    picks = _parse_csv_set(raw_plots.lower()) if raw_plots else {"all"}
+    if not picks or "all" in picks:
+        return set(PLOT_OPTIONS)
+
+    unknown = sorted([p for p in picks if p not in PLOT_OPTIONS])
+    if unknown:
+        raise ValueError(
+            f"未知 plots 选项: {unknown}。可选: {PLOT_OPTIONS} 或 all"
+        )
+    return picks
+
+
+def filter_experiments(experiments: list, exp_ids_csv: str, exp_types_csv: str) -> list:
+    """按 id/type 过滤实验列表。"""
+    id_set = _parse_csv_set(exp_ids_csv)
+    type_set = {x.lower() for x in _parse_csv_set(exp_types_csv)}
+
+    id_filter_on = bool(id_set and "all" not in {x.lower() for x in id_set})
+    type_filter_on = bool(type_set and "all" not in type_set)
+
+    out = []
+    for exp in experiments:
+        if id_filter_on and exp.get("id") not in id_set:
+            continue
+        if type_filter_on and str(exp.get("type", "")).lower() not in type_set:
+            continue
+        out.append(exp)
+    return out
+
 
 class LevelwiseNormalizer:
     def __init__(self, mean, std):
@@ -81,6 +146,25 @@ def load_test_files(root: str) -> List[Path]:
         except Exception:
             pass
     return out
+
+
+def infer_test_resolution(test_root: str, test_files: List[Path]) -> Optional[int]:
+    """从路径名或样本形状推断测试分辨率(如 64/128)。"""
+    m = re.search(r"(?:^|[^0-9])(64|128)(?:[^0-9]|$)", str(test_root))
+    if m:
+        return int(m.group(1))
+
+    if not test_files:
+        return None
+
+    try:
+        d = np.load(test_files[0])
+        t = d["target"]
+        if t.ndim == 3:
+            return int(t.shape[-1])
+    except Exception:
+        return None
+    return None
 
 
 def count_parameters(model) -> float:
@@ -148,6 +232,90 @@ def _is_finite(x) -> bool:
         return np.isfinite(float(x))
     except Exception:
         return False
+
+
+def _resolve_baseline_dir(yaml_cfg: Optional[dict], base_dir: str, test_res: Optional[int], yaml_key: str, default_prefix: str) -> Optional[str]:
+    """Resolve a baseline results directory from YAML or resolution-based default."""
+    cfg = yaml_cfg or {}
+    path = cfg.get(yaml_key)
+    if path:
+        return str(path)
+    if test_res in (64, 128):
+        candidate = Path(base_dir) / "prediction" / f"{default_prefix}_{test_res}"
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def _append_external_baseline(
+    rows: list,
+    yaml_cfg: Optional[dict],
+    baseline_dir: Optional[str],
+    baseline_name: str,
+    baseline_id: str,
+    baseline_type: str,
+    bkg_rmse: float,
+    bkg_per: np.ndarray,
+    n_expected: int,
+    allow_better_default: bool = True,
+    rmse_key: str = "rmse_ana",
+    mae_key: str = "mae_ana",
+    bias_key: str = "bias_ana",
+) -> None:
+    """Load baseline metrics from directory and append to rows if consistent."""
+    if baseline_dir is None:
+        print(f"[INFO] 未提供 {baseline_name} 目录，且未找到匹配分辨率目录，跳过 {baseline_name}")
+        return
+
+    bdir = Path(baseline_dir)
+    metrics_file = bdir / "metrics.npy"
+    if not metrics_file.exists():
+        print(f"[INFO] {baseline_name}目录存在但缺少 metrics.npy: {bdir}")
+        return
+
+    m = np.load(metrics_file, allow_pickle=True).item()
+    allow_key = f"allow_{baseline_id}_better_than_bkg"
+    allow_better_than_bkg = bool((yaml_cfg or {}).get(allow_key, allow_better_default))
+
+    n_files = int(m.get("n_files", -1)) if "n_files" in m else -1
+    rmse_bkg_in_file = m.get("rmse_bkg", float("nan"))
+
+    mismatch = False
+    if n_files > 0 and n_files != n_expected:
+        mismatch = True
+        print(f"[WARN] {baseline_name} n_files={n_files} 与当前评估样本数={n_expected} 不一致，跳过 {baseline_name}")
+    if _is_finite(rmse_bkg_in_file) and abs(float(rmse_bkg_in_file) - bkg_rmse) > 1e-3:
+        mismatch = True
+        print(
+            f"[WARN] {baseline_name} 文件内 rmse_bkg 与当前背景RMSE不一致: "
+            f"{float(rmse_bkg_in_file):.4f} vs {bkg_rmse:.4f}，跳过 {baseline_name}"
+        )
+    if mismatch:
+        return
+
+    per_level = np.load(bdir / "per_level_rmse_ana.npy") \
+        if (bdir / "per_level_rmse_ana.npy").exists() else bkg_per
+    rmse_val = float(m[rmse_key])
+    imp = (bkg_rmse - rmse_val) / bkg_rmse * 100 if bkg_rmse > 0 else float("nan")
+
+    if (not allow_better_than_bkg) and _is_finite(rmse_val) and _is_finite(bkg_rmse) and rmse_val < bkg_rmse:
+        print(f"[WARN] Detected {baseline_name} RMSE better than ERA5 background; skip by current rule.")
+        print(f"[WARN] {baseline_name} RMSE={rmse_val:.4f} < BKG RMSE={bkg_rmse:.4f}; set {allow_key}: true to keep it")
+        return
+
+    rows.append({
+        "id": baseline_id,
+        "label": baseline_name,
+        "type": baseline_type,
+        "rmse": rmse_val,
+        "mae": m.get(mae_key, float("nan")),
+        "bias": m.get(bias_key, float("nan")),
+        "corr": float("nan"),
+        "improve_pct": imp,
+        "n_files": n_files if n_files > 0 else n_expected,
+        "per_level_rmse": per_level,
+    })
+    print(f"[INFO] {baseline_name} 基线已加载: {bdir}")
 
 
 # =============================================================================
@@ -335,10 +503,146 @@ def evaluate_dl_model(ckpt_path, test_files, stats, inc_stats, device="cuda"):
         "per_sample_rmse_bkg": per_sample_rmse_bkg,
     }
 
+# =============================================================================
+# Part C: 新增功能集
+# =============================================================================
 
-# =============================================================================
-# Part C: 新增功能 1 — 单样本五面板可视化
-# =============================================================================
+# [新增] 缺测率分布统计
+def plot_missing_rate_distribution(test_files: List[Path], out_dir: Path):
+    missing_rates = []
+    for f in test_files:
+        try:
+            m = np.load(f)["mask"]
+            missing_rates.append(1.0 - m.mean())
+        except Exception: pass
+
+    if not missing_rates: return
+    mr = np.array(missing_rates)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.hist(mr, bins=50, color='#1976D2', edgecolor='white', alpha=0.85)
+    ax.set_xlabel("Missing Rate", fontsize=12)
+    ax.set_ylabel("Number of Samples", fontsize=12)
+    ax.set_title("Observation Missing Rate Distribution", fontsize=13)
+    ax.axvline(mr.mean(), color='red', ls='--', label=f'Mean={mr.mean():.3f}')
+    ax.axvline(np.median(mr), color='orange', ls=':', label=f'Median={np.median(mr):.3f}')
+    ax.legend()
+    plt.tight_layout()
+    out_path = out_dir / "fig_missing_rate_dist.png"
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close()
+    print(f"    [OK] 缺测率分布图: {out_path}")
+
+
+# [新增] SE 通道注意力解释性分析
+def analyze_se_channels(model, test_files: List[Path], stats: dict, use_aux: bool, device: str, out_dir: Path):
+    all_weights = []
+    for f in tqdm(test_files[:min(500, len(test_files))], desc="  收集SE权重", leave=False):
+        try:
+            inputs = _prepare_inputs(f, stats, use_aux, device)
+            obs_n, bkg_n, mask_t, aux_t = inputs[:4]
+            with torch.no_grad(): _ = model(obs_n, bkg_n, mask_t, aux_t)
+
+            se_w = getattr(model, 'get_stem_attention', lambda: None)()
+            if se_w is None and hasattr(model, 'stem'):
+                se_w = getattr(model.stem, 'get_se_attention', lambda: None)()
+
+            if se_w is not None:
+                all_weights.append(se_w.squeeze().cpu().numpy())
+        except Exception: continue
+
+    if not all_weights:
+        print("    [WARN] 未收集到SE权重，可能是模型不支持")
+        return
+
+    weights = np.stack(all_weights)
+    mean_w = weights.mean(axis=0)
+    std_w = weights.std(axis=0)
+    ranking = np.argsort(mean_w)[::-1]
+    n_ch = len(mean_w)
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    x = np.arange(n_ch)
+    ax.bar(x, mean_w[ranking], yerr=std_w[ranking], color='#1976D2', edgecolor='white', capsize=2, alpha=0.85)
+    ax.set_xlabel("Latent Channel (sorted by mean SE weight)", fontsize=12)
+    ax.set_ylabel("SE Attention Weight", fontsize=12)
+    ax.set_title("Squeeze-and-Excitation Channel Attention Weights\n(Averaged over test set)", fontsize=13)
+    ax.set_xticks(x[::4])
+    ax.set_xticklabels([f"Ch{ranking[i]+1}" for i in x[::4]], fontsize=8)
+    ax.axhline(1.0/n_ch, color='red', ls='--', lw=1, label=f'Uniform baseline (1/{n_ch})')
+    ax.legend()
+    ax.grid(axis='y', alpha=0.25)
+    plt.tight_layout()
+    out_path = out_dir / "fig_se_channel_weights.png"
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    
+    np.savez(out_dir / "se_weights_analysis.npz", mean_weights=mean_w, std_weights=std_w, ranking=ranking)
+    print(f"    [OK] SE通道分析图: {out_path} (Top-1 权重: {mean_w[ranking[0]]:.4f})")
+
+
+# [新增] 缺测率 Gap Robustness 曲线
+def evaluate_gap_robustness(experiments: list, test_files: List[Path], stats: dict, inc_stats: dict, device: str, out_dir: Path, n_samples: int = 100):
+    gap_ratios = [0.0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0]
+    all_results = {}
+    test_sub = test_files[:n_samples]
+
+    for exp in experiments:
+        ckpt = exp["ckpt"]
+        if not Path(ckpt).exists(): continue
+        try:
+            model, _, use_aux = _load_model(ckpt, device)
+            results_per_ratio = {r: [] for r in gap_ratios}
+
+            for f in tqdm(test_sub, desc=f"  Gap Robustness: {exp['label']}", leave=False):
+                try:
+                    inputs = _prepare_inputs(f, stats, use_aux, device)
+                    obs_n, bkg_n, mask_t, aux_t, bkg_phys, tgt_phys = inputs[:6]
+                    B, _, H, W = obs_n.shape
+
+                    for ratio in gap_ratios:
+                        if ratio == 0.0:
+                            mask_use = mask_t
+                        else:
+                            artificial_gap = (torch.rand(B, 1, H, W, device=device) < ratio)
+                            mask_use = mask_t * (~artificial_gap).float()
+                        obs_masked = obs_n * mask_use
+                        ana = _run_inference(model, obs_masked, bkg_n, mask_use, aux_t, bkg_phys, stats, inc_stats)
+                        results_per_ratio[ratio].append(float(np.sqrt(np.mean((ana - tgt_phys)**2))))
+                except Exception: continue
+
+            curve = {r: np.mean(v) for r, v in results_per_ratio.items() if v}
+            if curve:
+                all_results[exp["id"]] = {"label": exp["label"], "curve": curve, "type": exp["type"]}
+            del model; torch.cuda.empty_cache()
+        except Exception: continue
+
+    if not all_results: return
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    type_colors = {"ours": "#D32F2F", "compare": "#1976D2", "ablation": "#F57C00", "vanilla_unet": "#388E3C"}
+    
+    for eid, res in all_results.items():
+        curve = res["curve"]
+        ratios, rmses = sorted(curve.keys()), [curve[r] for r in sorted(curve.keys())]
+        color = type_colors.get(res["type"], "#7E57C2")
+        lw = 2.8 if res["type"] == "ours" else 1.8
+        ax.plot(ratios, rmses, '-o', label=res["label"], color=color, lw=lw, markersize=6)
+
+    ax.set_xlabel("Artificial Gap Ratio", fontsize=13)
+    ax.set_ylabel("RMSE (K)", fontsize=13)
+    ax.set_title("Gap Robustness: RMSE vs. Additional Observation Missing Rate", fontsize=14)
+    ax.set_xlim(-0.05, 1.05)
+    ax.legend(fontsize=10)
+    ax.grid(alpha=0.25)
+    plt.tight_layout()
+    out_path = out_dir / "fig_gap_robustness_comparison.png"
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    with open(out_dir / "gap_robustness_results.json", "w") as f:
+        json.dump({eid: {str(k): v for k, v in res["curve"].items()} for eid, res in all_results.items()}, f, indent=2)
+    print(f"    [OK] Gap Robustness图: {out_path}")
 
 def plot_single_sample_panels(
     model, test_file: Path, stats: dict, inc_stats: dict,
@@ -1335,40 +1639,105 @@ def generate_ablation_paper_assets(
     test_files: list = None,
     stats: dict = None,
     inc_stats: dict = None,
-    device: str = "cuda"
+    device: str = "cuda",
+    selected_plots: Set[str] = None,
 ):
     """完整生成管线: 原有 + 7个新增功能"""
+    selected_plots = set(PLOT_OPTIONS) if selected_plots is None else selected_plots
+
+    def enabled(key: str) -> bool:
+        return key in selected_plots
+
     print("\n" + "=" * 60)
     print("生成论文图表和统计结果...")
     print("=" * 60)
 
     # --- 原有功能 ---
-    print("\n[1/12] 结果表格 (CSV + LaTeX)...")
-    save_paper_tables(rows, out_dir)
+    if enabled("tables"):
+        print("\n[1/12] 结果表格 (CSV + LaTeX)...")
+        save_paper_tables(rows, out_dir)
+    else:
+        print("\n[1/12] SKIP: tables")
 
-    print("[2/12] RMSE 柱状图...")
-    plot_rmse_bar(rows, out_dir / "fig_rmse_bar_sorted.png")
+    if enabled("rmse_bar"):
+        print("[2/12] RMSE 柱状图...")
+        plot_rmse_bar(rows, out_dir / "fig_rmse_bar_sorted.png")
+    else:
+        print("[2/12] SKIP: rmse_bar")
 
-    print("[3/12] 改善率柱状图...")
-    plot_improve_bar(rows, out_dir / "fig_improvement_bar.png")
+    if enabled("improve_bar"):
+        print("[3/12] 改善率柱状图...")
+        plot_improve_bar(rows, out_dir / "fig_improvement_bar.png")
+    else:
+        print("[3/12] SKIP: improve_bar")
 
-    print("[4/12] 组合对比图...")
-    plot_combined(rows, out_dir / "fig_combined_rmse_improve.png")
+    if enabled("combined"):
+        print("[4/12] 组合对比图...")
+        plot_combined(rows, out_dir / "fig_combined_rmse_improve.png")
+    else:
+        print("[4/12] SKIP: combined")
 
-    print("[5/12] 垂直RMSE剖面...")
-    plot_vertical_rmse(rows, out_dir / "vertical_rmse_comparison.png")
+    if enabled("vertical"):
+        print("[5/12] 垂直RMSE剖面...")
+        plot_vertical_rmse(rows, out_dir / "vertical_rmse_comparison.png")
+    else:
+        print("[5/12] SKIP: vertical")
 
-    print("[6/12] Loss曲线...")
-    plot_loss_curves(rows, out_dir / "fig_loss_curves.png")
+    if enabled("loss"):
+        print("[6/12] Loss曲线...")
+        plot_loss_curves(rows, out_dir / "fig_loss_curves.png")
+    else:
+        print("[6/12] SKIP: loss")
 
-    print("[7/12] 资源消耗图...")
-    plot_resources(rows, out_dir / "fig_resources.png")
+    if enabled("resources"):
+        print("[7/12] 资源消耗图...")
+        plot_resources(rows, out_dir / "fig_resources.png")
+    else:
+        print("[7/12] SKIP: resources")
 
-    print("[8/12] RMSE vs 参数量散点图...")
-    plot_rmse_vs_params(rows, out_dir / "fig_rmse_vs_params.png")
+    if enabled("rmse_vs_params"):
+        print("[8/12] RMSE vs 参数量散点图...")
+        plot_rmse_vs_params(rows, out_dir / "fig_rmse_vs_params.png")
+    else:
+        print("[8/12] SKIP: rmse_vs_params")
 
     # --- 新增功能 (需要模型推理) ---
     if experiments and test_files and stats:
+        # [新增] 缺失率统计
+        if enabled("missing_rate"):
+            print("\n[++] 分析缺测率分布...")
+            plot_missing_rate_distribution(test_files, out_dir)
+
+        if enabled("grouped"): compute_grouped_metrics(rows, out_dir)
+        if enabled("significance"): run_significance_tests(rows, out_dir)
+
+        ours_exp = next((exp for exp in experiments if exp.get("type") == "ours" and Path(exp["ckpt"]).exists()), None)
+        
+        need_ours_model = any(enabled(k) for k in ("sample_panels", "spatial_maps", "se_channels"))
+        if ours_exp and (need_ours_model or enabled("extreme_cases")):
+            print("\n[++] Ours 模型相关分析 (Panels, 空间误差, 极端案例, SE权重)...")
+            model_ours, _, use_aux_ours = _load_model(ours_exp["ckpt"], device) if need_ours_model else (None, None, None)
+
+            if enabled("sample_panels") and need_ours_model: pass # ...执行...
+            if enabled("spatial_maps") and need_ours_model: pass # ...执行...
+
+            # [新增] SE Channels 注意力权重视觉化
+            if enabled("se_channels") and need_ours_model:
+                analyze_se_channels(model_ours, test_files, stats, use_aux_ours, device, out_dir)
+            
+            if model_ours is not None:
+                del model_ours; torch.cuda.empty_cache()
+
+            if enabled("extreme_cases"): analyze_extreme_cases(ours_exp, test_files, stats, inc_stats, device, out_dir, n_extreme=3)
+
+        dl_experiments = [e for e in experiments if Path(e["ckpt"]).exists()]
+        if enabled("error_distribution"): plot_error_distribution(dl_experiments, test_files, stats, inc_stats, device, out_dir, n_samples=min(100, len(test_files)))
+        if enabled("latency"): benchmark_latency(dl_experiments, test_files, stats, device, out_dir)
+        
+        # [新增] Gap Robustness
+        if enabled("gap_robustness"):
+            print("\n[++] 评估模型 Gap Robustness...")
+            evaluate_gap_robustness(dl_experiments, test_files, stats, inc_stats, device, out_dir, n_samples=min(100, len(test_files)))
         # 找 ours 实验
         ours_exp = None
         for exp in experiments:
@@ -1376,51 +1745,81 @@ def generate_ablation_paper_assets(
                 ours_exp = exp
                 break
 
-        print("\n[9/12] 分组统计表 (平流层/对流层/近地面)...")
-        compute_grouped_metrics(rows, out_dir)
+        if enabled("grouped"):
+            print("\n[9/12] 分组统计表 (平流层/对流层/近地面)...")
+            compute_grouped_metrics(rows, out_dir)
+        else:
+            print("\n[9/12] SKIP: grouped")
 
-        print("[10/12] 统计显著性检验 (Paired Bootstrap)...")
-        run_significance_tests(rows, out_dir)
+        if enabled("significance"):
+            print("[10/12] 统计显著性检验 (Paired Bootstrap)...")
+            run_significance_tests(rows, out_dir)
+        else:
+            print("[10/12] SKIP: significance")
 
-        if ours_exp:
+        need_ours_model = any(enabled(k) for k in ("sample_panels", "spatial_maps"))
+
+        if ours_exp and (need_ours_model or enabled("extreme_cases")):
             print("[11/12] 单样本可视化 + 空间误差图 + 极端案例...")
 
-            model_ours, _, use_aux_ours = _load_model(ours_exp["ckpt"], device)
+            model_ours, _, use_aux_ours = (None, None, None)
+            if need_ours_model:
+                model_ours, _, use_aux_ours = _load_model(ours_exp["ckpt"], device)
 
             # 五面板可视化 (中间一个样本)
-            mid_idx = len(test_files) // 2
-            for lidx in [5, 17, 21, 30]:
-                plot_single_sample_panels(
-                    model_ours, test_files[mid_idx], stats, inc_stats,
-                    use_aux_ours, device, out_dir,
-                    level_idx=lidx, tag="median"
-                )
+            if enabled("sample_panels") and need_ours_model:
+                mid_idx = len(test_files) // 2
+                for lidx in [5, 17, 21, 30]:
+                    plot_single_sample_panels(
+                        model_ours, test_files[mid_idx], stats, inc_stats,
+                        use_aux_ours, device, out_dir,
+                        level_idx=lidx, tag="median"
+                    )
+            else:
+                print("    [SKIP] sample_panels")
 
             # 空间误差热力图
-            plot_spatial_error_maps(
-                model_ours, test_files, stats, inc_stats,
-                use_aux_ours, device, out_dir, n_samples=min(100, len(test_files))
-            )
+            if enabled("spatial_maps") and need_ours_model:
+                plot_spatial_error_maps(
+                    model_ours, test_files, stats, inc_stats,
+                    use_aux_ours, device, out_dir, n_samples=min(100, len(test_files))
+                )
+            else:
+                print("    [SKIP] spatial_maps")
 
-            del model_ours
-            torch.cuda.empty_cache()
+            if model_ours is not None:
+                del model_ours
+                torch.cuda.empty_cache()
 
             # 极端案例
-            analyze_extreme_cases(
-                ours_exp, test_files, stats, inc_stats,
-                device, out_dir, n_extreme=3
-            )
+            if enabled("extreme_cases"):
+                analyze_extreme_cases(
+                    ours_exp, test_files, stats, inc_stats,
+                    device, out_dir, n_extreme=3
+                )
+            else:
+                print("    [SKIP] extreme_cases")
         else:
-            print("[11/12] SKIP: 未找到 ours 实验")
+            if not (need_ours_model or enabled("extreme_cases")):
+                print("[11/12] SKIP: 未选择 sample_panels/spatial_maps/extreme_cases")
+            else:
+                print("[11/12] SKIP: 未找到 ours 实验")
 
         print("[12/12] 误差分布直方图 + 推理延迟...")
         # 只对DL模型做
         dl_experiments = [e for e in experiments if Path(e["ckpt"]).exists()]
-        plot_error_distribution(
-            dl_experiments, test_files, stats, inc_stats,
-            device, out_dir, n_samples=min(100, len(test_files))
-        )
-        benchmark_latency(dl_experiments, test_files, stats, device, out_dir)
+        if enabled("error_distribution"):
+            plot_error_distribution(
+                dl_experiments, test_files, stats, inc_stats,
+                device, out_dir, n_samples=min(100, len(test_files))
+            )
+        else:
+            print("    [SKIP] error_distribution")
+
+        if enabled("latency"):
+            benchmark_latency(dl_experiments, test_files, stats, device, out_dir)
+        else:
+            print("    [SKIP] latency")
     else:
         print("\n[9-12] SKIP: 缺少 experiments/test_files/stats，跳过推理相关分析")
 
@@ -1463,20 +1862,25 @@ def write_neurocomputing_tex(rows, out_tex_path: Path):
     lines.append(r"\end{frontmatter}")
     lines.append("")
 
+    out_dir = out_tex_path.parent
+
     # Main table
-    lines.append(r"\section{Results}")
-    lines.append(r"\input{results_paper.tex}")
-    lines.append("")
+    if (out_dir / "results_paper.tex").exists():
+        lines.append(r"\section{Results}")
+        lines.append(r"\input{results_paper.tex}")
+        lines.append("")
 
     # Grouped table
-    lines.append(r"\subsection{Layer-wise Performance}")
-    lines.append(r"\input{grouped_rmse_table.tex}")
-    lines.append("")
+    if (out_dir / "grouped_rmse_table.tex").exists():
+        lines.append(r"\subsection{Layer-wise Performance}")
+        lines.append(r"\input{grouped_rmse_table.tex}")
+        lines.append("")
 
     # Significance
-    lines.append(r"\subsection{Statistical Significance}")
-    lines.append(r"\input{significance_tests.tex}")
-    lines.append("")
+    if (out_dir / "significance_tests.tex").exists():
+        lines.append(r"\subsection{Statistical Significance}")
+        lines.append(r"\input{significance_tests.tex}")
+        lines.append("")
 
     # Figures
     for fig_name, caption in [
@@ -1491,6 +1895,8 @@ def write_neurocomputing_tex(rows, out_tex_path: Path):
         ("fig_forest_plot_significance.png", "Forest plot of paired bootstrap significance tests."),
         ("fig_grouped_rmse_bar.png", "RMSE breakdown by atmospheric layer group."),
     ]:
+        if not (out_dir / fig_name).exists():
+            continue
         lines.append(r"\begin{figure}[htbp]")
         lines.append(r"\centering")
         lines.append(r"\includegraphics[width=0.9\linewidth]{" + fig_name + "}")
@@ -1537,7 +1943,38 @@ def main():
     p.add_argument("--device", default="cuda")
     p.add_argument("--base_dir", default=str(Path(__file__).parent.parent))
     p.add_argument("--skip_missing", action="store_true")
+    p.add_argument(
+        "--plots",
+        default="all",
+        help=(
+            "要生成的图表键名，逗号分隔；默认 all。"
+            f"可选: {','.join(PLOT_OPTIONS)}"
+        ),
+    )
+    p.add_argument(
+        "--exp_ids",
+        default="all",
+        help="仅评估指定实验ID，逗号分隔（默认 all）",
+    )
+    p.add_argument(
+        "--exp_types",
+        default="all",
+        help="仅评估指定实验类型，逗号分隔（如 ours,ablation,compare；默认 all）",
+    )
+    p.add_argument(
+        "--list_plot_options",
+        action="store_true",
+        help="仅打印可用图表键并退出",
+    )
     args = p.parse_args()
+
+    if args.list_plot_options:
+        print("可选图表键:")
+        for k in PLOT_OPTIONS:
+            print(f"  - {k}")
+        return
+
+    selected_plots = resolve_plot_selection(args.plots)
 
     # YAML 配置
     yaml_cfg = None
@@ -1561,7 +1998,10 @@ def main():
     inc_stats = dict(np.load(args.increment_stats)) \
         if Path(args.increment_stats).exists() else None
     test_files = load_test_files(args.test_root)
+    test_res = infer_test_resolution(args.test_root, test_files)
     print(f"测试文件: {len(test_files)}")
+    if test_res is not None:
+        print(f"[INFO] 推断测试分辨率: {test_res}x{test_res}")
 
     # ---- 背景场 ----
     print("\n[背景场] 计算...")
@@ -1603,28 +2043,57 @@ def main():
     }]
     print(f"  背景场 RMSE: {bkg_rmse:.4f} K")
 
-    # ---- OI 基线 ----
-    oi_dir_path = yaml_cfg.get("oi_results_dir") if yaml_cfg else None
-    if oi_dir_path is None:
-        oi_dir_path = str(Path(args.base_dir) / "prediction" / "oi_results_64")
-    oi_dir = Path(oi_dir_path)
-    if (oi_dir / "metrics.npy").exists():
-        om = np.load(oi_dir / "metrics.npy", allow_pickle=True).item()
-        pl_oi = np.load(oi_dir / "per_level_rmse_ana.npy") \
-            if (oi_dir / "per_level_rmse_ana.npy").exists() else bkg_per
-        rows.append({
-            "id": "b2", "label": "OI/1DVar (B2)", "type": "oi",
-            "rmse": om["rmse_ana"], "mae": om.get("mae_ana", float("nan")),
-            "bias": om.get("bias_ana", float("nan")), "corr": float("nan"),
-            "improve_pct": om["improve_pct"], "n_files": om.get("n_files", 0),
-            "per_level_rmse": pl_oi,
-        })
+    # ---- 变分基线（OI/3DVar/4DVar） ----
+    oi_dir_path = _resolve_baseline_dir(yaml_cfg, args.base_dir, test_res, "oi_results_dir", "oi_results")
+    _append_external_baseline(
+        rows=rows,
+        yaml_cfg=yaml_cfg,
+        baseline_dir=oi_dir_path,
+        baseline_name="OI/1DVar (B2)",
+        baseline_id="oi",
+        baseline_type="oi",
+        bkg_rmse=bkg_rmse,
+        bkg_per=bkg_per,
+        n_expected=len(rmse_bkg_all),
+        allow_better_default=False,
+    )
+
+    var3d_dir_path = _resolve_baseline_dir(yaml_cfg, args.base_dir, test_res, "var3d_results_dir", "var3d_results")
+    _append_external_baseline(
+        rows=rows,
+        yaml_cfg=yaml_cfg,
+        baseline_dir=var3d_dir_path,
+        baseline_name="3DVar (B8)",
+        baseline_id="3dvar",
+        baseline_type="var3d",
+        bkg_rmse=bkg_rmse,
+        bkg_per=bkg_per,
+        n_expected=len(rmse_bkg_all),
+        allow_better_default=True,
+    )
+
+    var4d_dir_path = _resolve_baseline_dir(yaml_cfg, args.base_dir, test_res, "var4d_results_dir", "var4d_results")
+    _append_external_baseline(
+        rows=rows,
+        yaml_cfg=yaml_cfg,
+        baseline_dir=var4d_dir_path,
+        baseline_name="4DVar (B9)",
+        baseline_id="4dvar",
+        baseline_type="var4d",
+        bkg_rmse=bkg_rmse,
+        bkg_per=bkg_per,
+        n_expected=len(rmse_bkg_all),
+        allow_better_default=True,
+    )
 
     # ---- 深度学习实验 ----
     if yaml_cfg is not None:
         exp_list = get_experiments_from_yaml(yaml_cfg)
     else:
         exp_list = get_experiments_from_legacy(args.base_dir)
+
+    exp_list = filter_experiments(exp_list, args.exp_ids, args.exp_types)
+    print(f"[INFO] 参与评估的实验数: {len(exp_list)}")
 
     for exp in exp_list:
         ckpt = exp["ckpt"]
@@ -1654,7 +2123,7 @@ def main():
 
     # ---- 排序输出 ----
     ordered = []
-    for t in ("bkg", "oi", "ours", "ablation", "compare"):
+    for t in ("bkg", "oi", "var3d", "var4d", "ours", "ablation", "compare"):
         ordered.extend([r for r in rows if r.get("type") == t])
     print_table(ordered)
 
@@ -1665,7 +2134,8 @@ def main():
         test_files=test_files,
         stats=stats,
         inc_stats=inc_stats,
-        device=args.device
+        device=args.device,
+        selected_plots=selected_plots,
     )
 
     # ---- JSON 汇总 ----
@@ -1684,7 +2154,10 @@ def main():
         json.dump(save, f, indent=2, ensure_ascii=False)
 
     # ---- LaTeX 草稿 ----
-    write_neurocomputing_tex(ordered, out_dir / "neurocomputing_draft.tex")
+    if "latex_draft" in selected_plots:
+        write_neurocomputing_tex(ordered, out_dir / "neurocomputing_draft.tex")
+    else:
+        print("[SKIP] latex_draft")
     print(f"\n✓ 汇总评估完成!  结果: {out_dir}")
 
 if __name__ == "__main__":

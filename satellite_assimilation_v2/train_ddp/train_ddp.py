@@ -168,7 +168,7 @@ def parse_args() -> argparse.Namespace:
     model_group.add_argument('--model', type=str, default='physics_unet',
                              choices=['physics_unet', 'physics_unet_lite',
                                      'physics_unet_large', 'vanilla_unet', 'fuxi_da',
-                                     'attn_unet', 'pixel_mlp', 'res_unet', 'fengwu'],
+                                     'attn_unet', 'pixel_mlp', 'res_unet', 'fengwu','mamba'],
                              help='模型类型')
     model_group.add_argument('--fusion_mode', type=str, default='gated',
                              choices=['concat', 'add', 'gated'],
@@ -389,29 +389,35 @@ class CombinedLoss(nn.Module):
         target_gy = F.conv2d(target_flat, self.sobel_y, padding=1)
         
         return F.l1_loss(pred_gx, target_gx) + F.l1_loss(pred_gy, target_gy)
-    
-    def forward(
-        self,
-        pred: torch.Tensor,
-        target: torch.Tensor,
-        deep_preds: Optional[List[torch.Tensor]] = None
-    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+    def vertical_consistency_loss(self, pred, target):
+        """相邻层温度差（lapse rate）一致性"""
+        # pred, target: [B, 37, H, W]
+        dp = pred[:, 1:, :, :] - pred[:, :-1, :, :]   # [B, 36, H, W]
+        dt = target[:, 1:, :, :] - target[:, :-1, :, :]
+        return F.mse_loss(dp, dt)
+
+    def forward(self, pred, target, deep_preds=None):
         base = self.base_loss(pred, target)
         grad = self.gradient_loss(pred, target)
+        vert = self.vertical_consistency_loss(pred, target)
         
         deep = torch.tensor(0.0, device=pred.device)
         if deep_preds:
             for dp in deep_preds:
                 deep = deep + self.base_loss(dp, target)
             deep = deep / len(deep_preds)
-        
-        total = base + self.grad_weight * grad + self.deep_weight * deep
+
+        total = (base 
+                + self.grad_weight * grad 
+                + self.deep_weight * deep
+                + 0.05 * vert)  # λ_vert = 0.05
         
         return total, {
             'total': total.item(),
             'base': base.item(),
             'grad': grad.item(),
-            'deep': deep.item()
+            'deep': deep.item(),
+            'vert': vert.item(),
         }
 
 
@@ -957,6 +963,11 @@ def main():
         # FuXi-DA uses aux_channels to size its first fusion conv. Keep it
         # consistent with runtime aux usage to avoid channel mismatch.
         model = create_model(args.model, aux_channels=4 if args.use_aux else 0)
+    elif args.model == 'mamba':
+        model = create_model('mamba',
+                            fusion_mode=args.fusion_mode,
+                            use_aux=args.use_aux,
+                            mask_aware=args.mask_aware)
     else:
         model = create_model(args.model)
     

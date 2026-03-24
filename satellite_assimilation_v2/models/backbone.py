@@ -1156,11 +1156,417 @@ _EXTRA_MODELS = {
     'res_unet': ResUNet,
     'fengwu': FengWuBaseline,
 }
+# =====================================================================
+# Part 10: Mamba Backbone (消融对比：替换 U-Net 骨干为 State Space Model)
+# =====================================================================
 
+class SimpleSSM(nn.Module):
+    """
+    简化版 Selective State Space Model（纯 PyTorch，无需 mamba_ssm 包）。
+    参考: Mamba (Gu & Dao, 2023) 的核心选择性扫描机制。
+    """
+    def __init__(self, d_model: int, d_state: int = 16,
+                 d_conv: int = 4, expand: int = 2):
+        super().__init__()
+        self.d_model = d_model
+        self.d_state = d_state
+        self.d_inner = d_model * expand
+
+        # 输入投影: d_model -> 2 * d_inner (x 和 gate 分支)
+        self.in_proj = nn.Linear(d_model, 2 * self.d_inner, bias=False)
+
+        # 局部卷积 (因果, 用于提供局部上下文)
+        self.conv1d = nn.Conv1d(
+            self.d_inner, self.d_inner,
+            kernel_size=d_conv, padding=d_conv - 1,
+            groups=self.d_inner, bias=True
+        )
+
+        # SSM 参数投影 (输入依赖的 B, C, delta)
+        self.x_proj = nn.Linear(self.d_inner, d_state * 2 + 1, bias=False)
+
+        # 可学习的 A 参数 (对数空间，保证负值以确保稳定性)
+        A = torch.arange(1, d_state + 1, dtype=torch.float32)
+        self.A_log = nn.Parameter(torch.log(A).unsqueeze(0).expand(self.d_inner, -1).clone())
+
+        # D 参数 (skip connection)
+        self.D = nn.Parameter(torch.ones(self.d_inner))
+
+        # 输出投影
+        self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
+
+        self.act = nn.SiLU()
+
+    def _ssm_scan(self, x, A, B, C, delta):
+        """
+        选择性扫描（序列化实现，兼容性好）。
+        x:     [B, L, D_inner]
+        A:     [D_inner, N]      (负值)
+        B:     [B, L, N]
+        C:     [B, L, N]
+        delta: [B, L, D_inner]   (正值, softplus后)
+        """
+        B_batch, L, D = x.shape
+        N = A.shape[1]
+
+        # 离散化: A_bar = exp(delta * A)
+        # delta: [B, L, D] -> [B, L, D, 1]
+        # A:     [D, N]    -> [1, 1, D, N]
+        deltaA = torch.exp(
+            delta.unsqueeze(-1) * A.unsqueeze(0).unsqueeze(0)
+        )  # [B, L, D, N]
+
+        # delta * B * x
+        deltaB_x = (
+            delta.unsqueeze(-1) *           # [B, L, D, 1]
+            B.unsqueeze(2) *                # [B, L, 1, N]
+            x.unsqueeze(-1)                 # [B, L, D, 1]
+        )  # [B, L, D, N]
+
+        # 序列化扫描
+        h = torch.zeros(B_batch, D, N, device=x.device, dtype=x.dtype)
+        outputs = []
+
+        for t in range(L):
+            h = h * deltaA[:, t] + deltaB_x[:, t]   # [B, D, N]
+            y_t = (h * C[:, t].unsqueeze(1)).sum(-1)  # [B, D]
+            outputs.append(y_t)
+
+        return torch.stack(outputs, dim=1)  # [B, L, D]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: [B, L, D]  (序列输入)
+        Returns:
+            [B, L, D]
+        """
+        B, L, D = x.shape
+
+        # 1. 输入投影 -> x_branch 和 gate_branch
+        xz = self.in_proj(x)                         # [B, L, 2*D_inner]
+        x_branch, z = xz.chunk(2, dim=-1)            # 各 [B, L, D_inner]
+
+        # 2. 因果卷积 (提供局部上下文)
+        x_conv = x_branch.transpose(1, 2)            # [B, D_inner, L]
+        x_conv = self.conv1d(x_conv)[:, :, :L]       # 因果: 截断到 L
+        x_conv = x_conv.transpose(1, 2)              # [B, L, D_inner]
+        x_conv = self.act(x_conv)
+
+        # 3. SSM 参数 (输入依赖 → "选择性"核心)
+        ssm_params = self.x_proj(x_conv)              # [B, L, 2N+1]
+        N = self.d_state
+        B_param = ssm_params[:, :, :N]                # [B, L, N]
+        C_param = ssm_params[:, :, N:2*N]             # [B, L, N]
+        delta    = F.softplus(ssm_params[:, :, 2*N:]) # [B, L, 1]
+        delta    = delta.expand(-1, -1, self.d_inner) # [B, L, D_inner]
+
+        # 4. A 参数 (保证负值)
+        A = -torch.exp(self.A_log)                    # [D_inner, N]
+
+        # 5. 选择性扫描
+        y = self._ssm_scan(x_conv, A, B_param, C_param, delta)  # [B, L, D_inner]
+
+        # 6. Skip connection
+        y = y + x_conv * self.D.unsqueeze(0).unsqueeze(0)
+
+        # 7. Gate 和输出
+        y = y * self.act(z)
+        return self.out_proj(y)                       # [B, L, D]
+
+
+class BiDirectional2DSSM(nn.Module):
+    """
+    双向二维 SSM：沿4个方向扫描 (→, ←, ↓, ↑) 后融合。
+    将 2D 特征图展平为 1D 序列处理，再恢复 2D。
+    """
+    def __init__(self, d_model: int, d_state: int = 16,
+                 d_conv: int = 4, expand: int = 2,
+                 n_directions: int = 4):
+        super().__init__()
+        self.n_directions = n_directions
+        self.d_model = d_model
+
+        # 每个方向一个 SSM（参数独立）
+        self.ssms = nn.ModuleList([
+            SimpleSSM(d_model, d_state, d_conv, expand)
+            for _ in range(n_directions)
+        ])
+
+        # 融合投影
+        self.merge = nn.Linear(d_model * n_directions, d_model, bias=False)
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: [B, C, H, W]
+        Returns:
+            [B, C, H, W]
+        """
+        B, C, H, W = x.shape
+        assert C == self.d_model
+
+        outputs = []
+
+        for i, ssm in enumerate(self.ssms):
+            if i == 0:
+                # → 方向: 按行展平
+                seq = x.permute(0, 2, 3, 1).reshape(B, H * W, C)  # [B, HW, C]
+            elif i == 1:
+                # ← 方向: 按行反向
+                seq = x.permute(0, 2, 3, 1).reshape(B, H * W, C).flip(1)
+            elif i == 2:
+                # ↓ 方向: 按列展平
+                seq = x.permute(0, 3, 2, 1).reshape(B, H * W, C)
+            else:
+                # ↑ 方向: 按列反向
+                seq = x.permute(0, 3, 2, 1).reshape(B, H * W, C).flip(1)
+
+            out = ssm(seq)  # [B, HW, C]
+
+            # 恢复方向
+            if i in (1, 3):
+                out = out.flip(1)
+
+            outputs.append(out)
+
+        # 拼接 + 融合
+        merged = torch.cat(outputs, dim=-1)      # [B, HW, C*4]
+        merged = self.merge(merged)               # [B, HW, C]
+        merged = self.norm(merged)
+
+        return merged.reshape(B, H, W, C).permute(0, 3, 1, 2)  # [B, C, H, W]
+
+
+class MambaBlock2D(nn.Module):
+    """
+    完整的 2D Mamba Block: LN -> Bi2DSSM -> Residual -> LN -> FFN -> Residual
+    """
+    def __init__(self, dim: int, d_state: int = 16, expand: int = 2,
+                 ffn_expand: int = 4, dropout: float = 0.1):
+        super().__init__()
+        self.norm1 = nn.GroupNorm(min(32, dim), dim)
+        self.ssm = BiDirectional2DSSM(dim, d_state=d_state, expand=expand,
+                                       n_directions=4)
+        self.drop1 = nn.Dropout(dropout)
+
+        self.norm2 = nn.GroupNorm(min(32, dim), dim)
+        self.ffn = nn.Sequential(
+            nn.Conv2d(dim, dim * ffn_expand, 1, bias=False),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Conv2d(dim * ffn_expand, dim, 1, bias=False),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # SSM branch
+        x = x + self.drop1(self.ssm(self.norm1(x)))
+        # FFN branch
+        x = x + self.ffn(self.norm2(x))
+        return x
+
+
+class MambaDownStage(nn.Module):
+    """Mamba 下采样阶段: 先下采样通道/空间，再堆叠 MambaBlock"""
+    def __init__(self, in_ch: int, out_ch: int, n_blocks: int = 2,
+                 d_state: int = 16, dropout: float = 0.1):
+        super().__init__()
+        self.downsample = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, 3, stride=2, padding=1, bias=False),
+            nn.GroupNorm(min(32, out_ch), out_ch),
+            nn.GELU(),
+        )
+        self.blocks = nn.Sequential(*[
+            MambaBlock2D(out_ch, d_state=d_state, dropout=dropout)
+            for _ in range(n_blocks)
+        ])
+
+    def forward(self, x):
+        x = self.downsample(x)
+        x = self.blocks(x)
+        return x
+
+
+class MambaUpStage(nn.Module):
+    """Mamba 上采样阶段 + skip connection"""
+    def __init__(self, in_ch: int, skip_ch: int, out_ch: int,
+                 n_blocks: int = 1, d_state: int = 16,
+                 dropout: float = 0.1):
+        super().__init__()
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear',
+                                     align_corners=True)
+        self.fuse = nn.Sequential(
+            nn.Conv2d(in_ch + skip_ch, out_ch, 1, bias=False),
+            nn.GroupNorm(min(32, out_ch), out_ch),
+            nn.GELU(),
+        )
+        self.blocks = nn.Sequential(*[
+            MambaBlock2D(out_ch, d_state=d_state, dropout=dropout)
+            for _ in range(n_blocks)
+        ])
+
+    def forward(self, x, skip):
+        x = self.upsample(x)
+        if x.shape[2:] != skip.shape[2:]:
+            x = F.interpolate(x, size=skip.shape[2:],
+                              mode='bilinear', align_corners=True)
+        x = torch.cat([x, skip], dim=1)
+        x = self.fuse(x)
+        x = self.blocks(x)
+        return x
+
+
+class MambaAssimilationNet(nn.Module):
+    """
+    Mamba 骨干消融模型：保留 SpectralAdapterStemV2，
+    将 U-Net encoder/decoder 替换为 Mamba (SSM) 模块。
+
+    用途：消融实验 —— 验证 PASNet 的改进来自 Stem 设计
+    而非特定骨干（U-Net）选择。
+
+    架构:
+        SpectralAdapterStemV2 (保留)
+        → Mamba Encoder (4 stages, 下采样)
+        → Mamba Bottleneck
+        → Mamba Decoder (4 stages, 上采样 + skip)
+        → Output Head + Background Residual
+    """
+    def __init__(
+        self,
+        obs_channels: int = 17,
+        bkg_channels: int = 37,
+        aux_channels: int = 4,
+        out_channels: int = 37,
+        stem_channels: int = 64,
+        encoder_channels: list = None,
+        d_state: int = 16,
+        n_blocks_per_stage: int = 2,
+        fusion_mode: str = 'gated',
+        use_aux: bool = True,
+        mask_aware: bool = True,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+
+        if encoder_channels is None:
+            encoder_channels = [64, 128, 256, 512]
+
+        # ============== 1. Spectral Adapter Stem (与 PASNet 共享) ==============
+        self.stem = SpectralAdapterStemV2(
+            obs_channels=obs_channels,
+            bkg_channels=bkg_channels,
+            aux_channels=aux_channels,
+            latent_channels=stem_channels,
+            fusion_mode=fusion_mode,
+            use_aux=use_aux,
+            mask_aware=mask_aware,
+            dropout=dropout,
+        )
+
+        # ============== 2. Mamba Encoder ==============
+        self.encoder_stages = nn.ModuleList()
+        in_ch = stem_channels
+        for out_ch in encoder_channels:
+            self.encoder_stages.append(
+                MambaDownStage(in_ch, out_ch,
+                               n_blocks=n_blocks_per_stage,
+                               d_state=d_state, dropout=dropout)
+            )
+            in_ch = out_ch
+
+        # ============== 3. Bottleneck ==============
+        self.bottleneck = nn.Sequential(
+            MambaBlock2D(encoder_channels[-1], d_state=d_state,
+                         dropout=dropout),
+            MambaBlock2D(encoder_channels[-1], d_state=d_state,
+                         dropout=dropout),
+        )
+
+        # ============== 4. Mamba Decoder ==============
+        decoder_channels = list(reversed(encoder_channels[:-1])) + [stem_channels]
+        # decoder_channels = [256, 128, 64, 64]  for default config
+
+        self.decoder_stages = nn.ModuleList()
+        in_ch = encoder_channels[-1]
+        enc_skip_channels = list(reversed(encoder_channels[:-1])) + [stem_channels]
+
+        for i, (out_ch, skip_ch) in enumerate(
+            zip(decoder_channels, enc_skip_channels)
+        ):
+            self.decoder_stages.append(
+                MambaUpStage(in_ch, skip_ch, out_ch,
+                             n_blocks=1, d_state=d_state,
+                             dropout=dropout)
+            )
+            in_ch = out_ch
+
+        # ============== 5. Output Head ==============
+        self.output_head = nn.Sequential(
+            nn.Conv2d(decoder_channels[-1], decoder_channels[-1], 3,
+                      padding=1, bias=False),
+            nn.GroupNorm(min(32, decoder_channels[-1]), decoder_channels[-1]),
+            nn.GELU(),
+            nn.Conv2d(decoder_channels[-1], out_channels, 1),
+        )
+
+        # ============== 6. Background Residual ==============
+        self.bkg_skip = nn.Conv2d(bkg_channels, out_channels, 1, bias=False)
+
+        self._print_info()
+
+    def _print_info(self):
+        n_params = sum(p.numel() for p in self.parameters())
+        print(f"\n{'='*60}")
+        print(f"MambaAssimilationNet (Mamba backbone ablation)")
+        print(f"  Stem: SpectralAdapterStemV2 (shared with PASNet)")
+        print(f"  Backbone: Bidirectional 2D Mamba (4-direction scan)")
+        print(f"  Parameters: {n_params:,}")
+        print(f"{'='*60}")
+
+    def forward(
+        self,
+        obs: torch.Tensor,
+        bkg: torch.Tensor,
+        mask: torch.Tensor,
+        aux: torch.Tensor = None,
+    ) -> torch.Tensor:
+        """
+        接口与 PhysicsAwareUNet 完全一致。
+        """
+        # 1. Stem
+        x = self.stem(obs, bkg, mask, aux)   # [B, 64, H, W]
+
+        # 2. Encoder (保存 skip)
+        skips = [x]
+        for stage in self.encoder_stages:
+            x = stage(x)
+            skips.append(x)
+
+        # 3. Bottleneck
+        x = self.bottleneck(x)
+
+        # 4. Decoder (使用 skip)
+        skips = skips[:-1]                    # 去掉最后一个
+        skips = list(reversed(skips))
+        for stage, skip in zip(self.decoder_stages, skips):
+            x = stage(x, skip)
+
+        # 5. Output + Background residual
+        out = self.output_head(x)
+        out = out + self.bkg_skip(bkg)
+
+        return out
+# ============ 注册 Mamba 模型到工厂 ============
+_EXTRA_MODELS['mamba'] = MambaAssimilationNet
 # monkey-patch create_model 加入新模型 (避免修改原函数)
 _orig_create_model = create_model
+
+
 def create_model(model_name: str = 'physics_unet', **kwargs) -> 'nn.Module':
     if model_name in _EXTRA_MODELS:
         kwargs.pop('config', None)  # extra models do not accept UNetConfig
         return _EXTRA_MODELS[model_name](**kwargs)
     return _orig_create_model(model_name, **kwargs)
+

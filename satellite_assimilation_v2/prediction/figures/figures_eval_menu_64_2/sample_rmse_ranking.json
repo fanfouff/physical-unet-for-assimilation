@@ -1,0 +1,1937 @@
+[
+  {
+    "rank": 1,
+    "rmse": 0.5926141142845154,
+    "file": "collocation_20240107_1723.npz"
+  },
+  {
+    "rank": 2,
+    "rmse": 0.6046827435493469,
+    "file": "collocation_20240502_1359.npz"
+  },
+  {
+    "rank": 3,
+    "rmse": 0.6224480867385864,
+    "file": "collocation_20240508_1345.npz"
+  },
+  {
+    "rank": 4,
+    "rmse": 0.6298832893371582,
+    "file": "collocation_20240203_1711.npz"
+  },
+  {
+    "rank": 5,
+    "rmse": 0.6678571701049805,
+    "file": "collocation_20240224_1854.npz"
+  },
+  {
+    "rank": 6,
+    "rmse": 0.6710899472236633,
+    "file": "collocation_20240513_1350.npz"
+  },
+  {
+    "rank": 7,
+    "rmse": 0.6838604211807251,
+    "file": "collocation_20240416_1403.npz"
+  },
+  {
+    "rank": 8,
+    "rmse": 0.6937803030014038,
+    "file": "collocation_20240721_0509.npz"
+  },
+  {
+    "rank": 9,
+    "rmse": 0.7151027321815491,
+    "file": "collocation_20240926_1218.npz"
+  },
+  {
+    "rank": 10,
+    "rmse": 0.7183742523193359,
+    "file": "collocation_20240727_1140.npz"
+  },
+  {
+    "rank": 11,
+    "rmse": 0.7244952917098999,
+    "file": "collocation_20241106_0549.npz"
+  },
+  {
+    "rank": 12,
+    "rmse": 0.7310187220573425,
+    "file": "collocation_20240118_2037.npz"
+  },
+  {
+    "rank": 13,
+    "rmse": 0.7322568297386169,
+    "file": "collocation_20241201_1801.npz"
+  },
+  {
+    "rank": 14,
+    "rmse": 0.7332333326339722,
+    "file": "collocation_20240403_1309.npz"
+  },
+  {
+    "rank": 15,
+    "rmse": 0.7352884411811829,
+    "file": "collocation_20240721_1336.npz"
+  },
+  {
+    "rank": 16,
+    "rmse": 0.7381949424743652,
+    "file": "collocation_20240520_0126.npz"
+  },
+  {
+    "rank": 17,
+    "rmse": 0.7394402027130127,
+    "file": "collocation_20240425_1251.npz"
+  },
+  {
+    "rank": 18,
+    "rmse": 0.739571213722229,
+    "file": "collocation_20240924_1438.npz"
+  },
+  {
+    "rank": 19,
+    "rmse": 0.7428333163261414,
+    "file": "collocation_20240519_1335.npz"
+  },
+  {
+    "rank": 20,
+    "rmse": 0.7431325912475586,
+    "file": "collocation_20240501_1237.npz"
+  },
+  {
+    "rank": 21,
+    "rmse": 0.7514268755912781,
+    "file": "collocation_20241124_2340.npz"
+  },
+  {
+    "rank": 22,
+    "rmse": 0.7520589232444763,
+    "file": "collocation_20240920_0547.npz"
+  },
+  {
+    "rank": 23,
+    "rmse": 0.7525251507759094,
+    "file": "collocation_20240805_1714.npz"
+  },
+  {
+    "rank": 24,
+    "rmse": 0.7591922283172607,
+    "file": "collocation_20240812_1136.npz"
+  },
+  {
+    "rank": 25,
+    "rmse": 0.7627034783363342,
+    "file": "collocation_20240805_1855.npz"
+  },
+  {
+    "rank": 26,
+    "rmse": 0.76517254114151,
+    "file": "collocation_20241003_1144.npz"
+  },
+  {
+    "rank": 27,
+    "rmse": 0.7658661603927612,
+    "file": "collocation_20240403_1127.npz"
+  },
+  {
+    "rank": 28,
+    "rmse": 0.7686951160430908,
+    "file": "collocation_20241028_0702.npz"
+  },
+  {
+    "rank": 29,
+    "rmse": 0.7696349620819092,
+    "file": "collocation_20240425_0605.npz"
+  },
+  {
+    "rank": 30,
+    "rmse": 0.777057945728302,
+    "file": "collocation_20240927_1159.npz"
+  },
+  {
+    "rank": 31,
+    "rmse": 0.7770899534225464,
+    "file": "collocation_20240809_1415.npz"
+  },
+  {
+    "rank": 32,
+    "rmse": 0.7775753140449524,
+    "file": "collocation_20240701_1317.npz"
+  },
+  {
+    "rank": 33,
+    "rmse": 0.7784928679466248,
+    "file": "collocation_20241023_1343.npz"
+  },
+  {
+    "rank": 34,
+    "rmse": 0.7808206677436829,
+    "file": "collocation_20240101_0224.npz"
+  },
+  {
+    "rank": 35,
+    "rmse": 0.7817816734313965,
+    "file": "collocation_20241109_0128.npz"
+  },
+  {
+    "rank": 36,
+    "rmse": 0.7820261120796204,
+    "file": "collocation_20240520_1316.npz"
+  },
+  {
+    "rank": 37,
+    "rmse": 0.7882289290428162,
+    "file": "collocation_20240121_1617.npz"
+  },
+  {
+    "rank": 38,
+    "rmse": 0.7895763516426086,
+    "file": "collocation_20240923_1135.npz"
+  },
+  {
+    "rank": 39,
+    "rmse": 0.7908416390419006,
+    "file": "collocation_20240219_1849.npz"
+  },
+  {
+    "rank": 40,
+    "rmse": 0.7956362962722778,
+    "file": "collocation_20240215_1643.npz"
+  },
+  {
+    "rank": 41,
+    "rmse": 0.7962589859962463,
+    "file": "collocation_20240210_0124.npz"
+  },
+  {
+    "rank": 42,
+    "rmse": 0.7968990206718445,
+    "file": "collocation_20241124_0504.npz"
+  },
+  {
+    "rank": 43,
+    "rmse": 0.7973142862319946,
+    "file": "collocation_20240523_0209.npz"
+  },
+  {
+    "rank": 44,
+    "rmse": 0.7986690998077393,
+    "file": "collocation_20240922_0327.npz"
+  },
+  {
+    "rank": 45,
+    "rmse": 0.8006144165992737,
+    "file": "collocation_20240714_0543.npz"
+  },
+  {
+    "rank": 46,
+    "rmse": 0.8012027144432068,
+    "file": "collocation_20241031_0241.npz"
+  },
+  {
+    "rank": 47,
+    "rmse": 0.8024207353591919,
+    "file": "collocation_20240217_0556.npz"
+  },
+  {
+    "rank": 48,
+    "rmse": 0.8030475378036499,
+    "file": "collocation_20240208_1030.npz"
+  },
+  {
+    "rank": 49,
+    "rmse": 0.8031639456748962,
+    "file": "collocation_20240409_0246.npz"
+  },
+  {
+    "rank": 50,
+    "rmse": 0.8049163222312927,
+    "file": "collocation_20240528_1404.npz"
+  },
+  {
+    "rank": 51,
+    "rmse": 0.8077017068862915,
+    "file": "collocation_20240706_0131.npz"
+  },
+  {
+    "rank": 52,
+    "rmse": 0.8095648884773254,
+    "file": "collocation_20240912_1145.npz"
+  },
+  {
+    "rank": 53,
+    "rmse": 0.8128533363342285,
+    "file": "collocation_20241108_0147.npz"
+  },
+  {
+    "rank": 54,
+    "rmse": 0.8145613670349121,
+    "file": "collocation_20240402_2337.npz"
+  },
+  {
+    "rank": 55,
+    "rmse": 0.8150492906570435,
+    "file": "collocation_20241102_1715.npz"
+  },
+  {
+    "rank": 56,
+    "rmse": 0.8173288702964783,
+    "file": "collocation_20241031_1936.npz"
+  },
+  {
+    "rank": 57,
+    "rmse": 0.8180445432662964,
+    "file": "collocation_20241013_1153.npz"
+  },
+  {
+    "rank": 58,
+    "rmse": 0.8187136650085449,
+    "file": "collocation_20240213_0531.npz"
+  },
+  {
+    "rank": 59,
+    "rmse": 0.8188518285751343,
+    "file": "collocation_20240402_1147.npz"
+  },
+  {
+    "rank": 60,
+    "rmse": 0.8193437457084656,
+    "file": "collocation_20241020_1442.npz"
+  },
+  {
+    "rank": 61,
+    "rmse": 0.8198623061180115,
+    "file": "collocation_20241001_1404.npz"
+  },
+  {
+    "rank": 62,
+    "rmse": 0.8259212374687195,
+    "file": "collocation_20240915_0542.npz"
+  },
+  {
+    "rank": 63,
+    "rmse": 0.8279030919075012,
+    "file": "collocation_20240419_0619.npz"
+  },
+  {
+    "rank": 64,
+    "rmse": 0.8286125659942627,
+    "file": "collocation_20240928_1502.npz"
+  },
+  {
+    "rank": 65,
+    "rmse": 0.8292432427406311,
+    "file": "collocation_20240423_2338.npz"
+  },
+  {
+    "rank": 66,
+    "rmse": 0.8308955430984497,
+    "file": "collocation_20240921_0023.npz"
+  },
+  {
+    "rank": 67,
+    "rmse": 0.8311673402786255,
+    "file": "collocation_20240531_0439.npz"
+  },
+  {
+    "rank": 68,
+    "rmse": 0.8340948820114136,
+    "file": "collocation_20240422_0340.npz"
+  },
+  {
+    "rank": 69,
+    "rmse": 0.8359711170196533,
+    "file": "collocation_20240823_1126.npz"
+  },
+  {
+    "rank": 70,
+    "rmse": 0.8363614082336426,
+    "file": "collocation_20240708_0053.npz"
+  },
+  {
+    "rank": 71,
+    "rmse": 0.8370167016983032,
+    "file": "collocation_20241115_0113.npz"
+  },
+  {
+    "rank": 72,
+    "rmse": 0.8385157585144043,
+    "file": "collocation_20240218_1727.npz"
+  },
+  {
+    "rank": 73,
+    "rmse": 0.8412208557128906,
+    "file": "collocation_20240822_0459.npz"
+  },
+  {
+    "rank": 74,
+    "rmse": 0.8419861197471619,
+    "file": "collocation_20240425_1109.npz"
+  },
+  {
+    "rank": 75,
+    "rmse": 0.8420507311820984,
+    "file": "collocation_20240927_0150.npz"
+  },
+  {
+    "rank": 76,
+    "rmse": 0.842435359954834,
+    "file": "collocation_20240524_0331.npz"
+  },
+  {
+    "rank": 77,
+    "rmse": 0.8429381251335144,
+    "file": "collocation_20240802_0117.npz"
+  },
+  {
+    "rank": 78,
+    "rmse": 0.8437750339508057,
+    "file": "collocation_20241128_0709.npz"
+  },
+  {
+    "rank": 79,
+    "rmse": 0.8448779582977295,
+    "file": "collocation_20240524_2349.npz"
+  },
+  {
+    "rank": 80,
+    "rmse": 0.8505712747573853,
+    "file": "collocation_20240124_1842.npz"
+  },
+  {
+    "rank": 81,
+    "rmse": 0.8507634997367859,
+    "file": "collocation_20240803_0058.npz"
+  },
+  {
+    "rank": 82,
+    "rmse": 0.854356586933136,
+    "file": "collocation_20240409_0104.npz"
+  },
+  {
+    "rank": 83,
+    "rmse": 0.855204701423645,
+    "file": "collocation_20241119_2335.npz"
+  },
+  {
+    "rank": 84,
+    "rmse": 0.8565549254417419,
+    "file": "collocation_20241101_1916.npz"
+  },
+  {
+    "rank": 85,
+    "rmse": 0.85771644115448,
+    "file": "collocation_20240517_1414.npz"
+  },
+  {
+    "rank": 86,
+    "rmse": 0.8577184677124023,
+    "file": "collocation_20240211_1618.npz"
+  },
+  {
+    "rank": 87,
+    "rmse": 0.8594820499420166,
+    "file": "collocation_20241121_1429.npz"
+  },
+  {
+    "rank": 88,
+    "rmse": 0.8627009987831116,
+    "file": "collocation_20240524_1017.npz"
+  },
+  {
+    "rank": 89,
+    "rmse": 0.8638741374015808,
+    "file": "collocation_20240819_1102.npz"
+  },
+  {
+    "rank": 90,
+    "rmse": 0.8650120496749878,
+    "file": "collocation_20241006_1409.npz"
+  },
+  {
+    "rank": 91,
+    "rmse": 0.8650846481323242,
+    "file": "collocation_20240416_0031.npz"
+  },
+  {
+    "rank": 92,
+    "rmse": 0.8652863502502441,
+    "file": "collocation_20241110_2307.npz"
+  },
+  {
+    "rank": 93,
+    "rmse": 0.8653829097747803,
+    "file": "collocation_20241116_0053.npz"
+  },
+  {
+    "rank": 94,
+    "rmse": 0.8664442300796509,
+    "file": "collocation_20240115_0440.npz"
+  },
+  {
+    "rank": 95,
+    "rmse": 0.8673041462898254,
+    "file": "collocation_20240727_0132.npz"
+  },
+  {
+    "rank": 96,
+    "rmse": 0.8675156831741333,
+    "file": "collocation_20241111_1239.npz"
+  },
+  {
+    "rank": 97,
+    "rmse": 0.8679462671279907,
+    "file": "collocation_20240226_1453.npz"
+  },
+  {
+    "rank": 98,
+    "rmse": 0.8688332438468933,
+    "file": "collocation_20241012_0345.npz"
+  },
+  {
+    "rank": 99,
+    "rmse": 0.869364321231842,
+    "file": "collocation_20241102_1857.npz"
+  },
+  {
+    "rank": 100,
+    "rmse": 0.8709450960159302,
+    "file": "collocation_20241122_0724.npz"
+  },
+  {
+    "rank": 101,
+    "rmse": 0.8722981810569763,
+    "file": "collocation_20240717_0122.npz"
+  },
+  {
+    "rank": 102,
+    "rmse": 0.8723725080490112,
+    "file": "collocation_20241129_2203.npz"
+  },
+  {
+    "rank": 103,
+    "rmse": 0.8729737997055054,
+    "file": "collocation_20240808_1111.npz"
+  },
+  {
+    "rank": 104,
+    "rmse": 0.8731673955917358,
+    "file": "collocation_20240402_0642.npz"
+  },
+  {
+    "rank": 105,
+    "rmse": 0.8740615844726562,
+    "file": "collocation_20240805_0524.npz"
+  },
+  {
+    "rank": 106,
+    "rmse": 0.8770467638969421,
+    "file": "collocation_20240225_1149.npz"
+  },
+  {
+    "rank": 107,
+    "rmse": 0.8778277635574341,
+    "file": "collocation_20240220_0135.npz"
+  },
+  {
+    "rank": 108,
+    "rmse": 0.8803366422653198,
+    "file": "collocation_20240203_0339.npz"
+  },
+  {
+    "rank": 109,
+    "rmse": 0.8828078508377075,
+    "file": "collocation_20241022_0717.npz"
+  },
+  {
+    "rank": 110,
+    "rmse": 0.882953405380249,
+    "file": "collocation_20241122_0220.npz"
+  },
+  {
+    "rank": 111,
+    "rmse": 0.8836872577667236,
+    "file": "collocation_20240429_1134.npz"
+  },
+  {
+    "rank": 112,
+    "rmse": 0.8848429918289185,
+    "file": "collocation_20240418_0638.npz"
+  },
+  {
+    "rank": 113,
+    "rmse": 0.888135552406311,
+    "file": "collocation_20240529_1204.npz"
+  },
+  {
+    "rank": 114,
+    "rmse": 0.8895512223243713,
+    "file": "collocation_20240510_0439.npz"
+  },
+  {
+    "rank": 115,
+    "rmse": 0.8903867602348328,
+    "file": "collocation_20240520_0307.npz"
+  },
+  {
+    "rank": 116,
+    "rmse": 0.8924521207809448,
+    "file": "collocation_20240517_2241.npz"
+  },
+  {
+    "rank": 117,
+    "rmse": 0.8925896286964417,
+    "file": "collocation_20240216_0433.npz"
+  },
+  {
+    "rank": 118,
+    "rmse": 0.8954127430915833,
+    "file": "collocation_20240915_1228.npz"
+  },
+  {
+    "rank": 119,
+    "rmse": 0.8971474170684814,
+    "file": "collocation_20240703_1420.npz"
+  },
+  {
+    "rank": 120,
+    "rmse": 0.8972845077514648,
+    "file": "collocation_20240801_0641.npz"
+  },
+  {
+    "rank": 121,
+    "rmse": 0.8997443914413452,
+    "file": "collocation_20240705_0655.npz"
+  },
+  {
+    "rank": 122,
+    "rmse": 0.9022542238235474,
+    "file": "collocation_20241006_0037.npz"
+  },
+  {
+    "rank": 123,
+    "rmse": 0.9026151299476624,
+    "file": "collocation_20240519_1658.npz"
+  },
+  {
+    "rank": 124,
+    "rmse": 0.902719259262085,
+    "file": "collocation_20240810_1356.npz"
+  },
+  {
+    "rank": 125,
+    "rmse": 0.9038179516792297,
+    "file": "collocation_20240502_0208.npz"
+  },
+  {
+    "rank": 126,
+    "rmse": 0.9045297503471375,
+    "file": "collocation_20240204_1652.npz"
+  },
+  {
+    "rank": 127,
+    "rmse": 0.9058008790016174,
+    "file": "collocation_20240814_0230.npz"
+  },
+  {
+    "rank": 128,
+    "rmse": 0.9068408608436584,
+    "file": "collocation_20241114_1322.npz"
+  },
+  {
+    "rank": 129,
+    "rmse": 0.9074550867080688,
+    "file": "collocation_20240124_0652.npz"
+  },
+  {
+    "rank": 130,
+    "rmse": 0.9092950820922852,
+    "file": "collocation_20240214_1702.npz"
+  },
+  {
+    "rank": 131,
+    "rmse": 0.910527765750885,
+    "file": "collocation_20240514_0140.npz"
+  },
+  {
+    "rank": 132,
+    "rmse": 0.9106947183609009,
+    "file": "collocation_20240216_0110.npz"
+  },
+  {
+    "rank": 133,
+    "rmse": 0.9117042422294617,
+    "file": "collocation_20240202_0358.npz"
+  },
+  {
+    "rank": 134,
+    "rmse": 0.9146981239318848,
+    "file": "collocation_20240530_2335.npz"
+  },
+  {
+    "rank": 135,
+    "rmse": 0.9150418043136597,
+    "file": "collocation_20240110_0435.npz"
+  },
+  {
+    "rank": 136,
+    "rmse": 0.9163702130317688,
+    "file": "collocation_20241001_0900.npz"
+  },
+  {
+    "rank": 137,
+    "rmse": 0.9181435704231262,
+    "file": "collocation_20240423_0643.npz"
+  },
+  {
+    "rank": 138,
+    "rmse": 0.9182048439979553,
+    "file": "collocation_20241201_1942.npz"
+  },
+  {
+    "rank": 139,
+    "rmse": 0.9199901819229126,
+    "file": "collocation_20240115_0622.npz"
+  },
+  {
+    "rank": 140,
+    "rmse": 0.9215074777603149,
+    "file": "collocation_20240814_1420.npz"
+  },
+  {
+    "rank": 141,
+    "rmse": 0.924065887928009,
+    "file": "collocation_20240511_1105.npz"
+  },
+  {
+    "rank": 142,
+    "rmse": 0.9276273250579834,
+    "file": "collocation_20240901_0146.npz"
+  },
+  {
+    "rank": 143,
+    "rmse": 0.9277998208999634,
+    "file": "collocation_20241031_0059.npz"
+  },
+  {
+    "rank": 144,
+    "rmse": 0.9291815757751465,
+    "file": "collocation_20241124_0827.npz"
+  },
+  {
+    "rank": 145,
+    "rmse": 0.9319350719451904,
+    "file": "collocation_20240907_0636.npz"
+  },
+  {
+    "rank": 146,
+    "rmse": 0.9323493242263794,
+    "file": "collocation_20240912_0640.npz"
+  },
+  {
+    "rank": 147,
+    "rmse": 0.9331719279289246,
+    "file": "collocation_20240413_1501.npz"
+  },
+  {
+    "rank": 148,
+    "rmse": 0.9402416944503784,
+    "file": "collocation_20240831_0024.npz"
+  },
+  {
+    "rank": 149,
+    "rmse": 0.9407399892807007,
+    "file": "collocation_20240503_1016.npz"
+  },
+  {
+    "rank": 150,
+    "rmse": 0.9418785572052002,
+    "file": "collocation_20240712_0117.npz"
+  },
+  {
+    "rank": 151,
+    "rmse": 0.9428433179855347,
+    "file": "collocation_20240107_2227.npz"
+  },
+  {
+    "rank": 152,
+    "rmse": 0.9435672760009766,
+    "file": "collocation_20240918_0303.npz"
+  },
+  {
+    "rank": 153,
+    "rmse": 0.9441391825675964,
+    "file": "collocation_20240204_2338.npz"
+  },
+  {
+    "rank": 154,
+    "rmse": 0.9446731209754944,
+    "file": "collocation_20240815_1038.npz"
+  },
+  {
+    "rank": 155,
+    "rmse": 0.9450040459632874,
+    "file": "collocation_20240724_1238.npz"
+  },
+  {
+    "rank": 156,
+    "rmse": 0.9454734325408936,
+    "file": "collocation_20241109_1641.npz"
+  },
+  {
+    "rank": 157,
+    "rmse": 0.9463880062103271,
+    "file": "collocation_20240504_0634.npz"
+  },
+  {
+    "rank": 158,
+    "rmse": 0.948138415813446,
+    "file": "collocation_20241116_1243.npz"
+  },
+  {
+    "rank": 159,
+    "rmse": 0.9494889974594116,
+    "file": "collocation_20240415_0050.npz"
+  },
+  {
+    "rank": 160,
+    "rmse": 0.9518772959709167,
+    "file": "collocation_20240819_0739.npz"
+  },
+  {
+    "rank": 161,
+    "rmse": 0.9522234201431274,
+    "file": "collocation_20240118_0020.npz"
+  },
+  {
+    "rank": 162,
+    "rmse": 0.9525028467178345,
+    "file": "collocation_20240717_1312.npz"
+  },
+  {
+    "rank": 163,
+    "rmse": 0.9529062509536743,
+    "file": "collocation_20241008_1834.npz"
+  },
+  {
+    "rank": 164,
+    "rmse": 0.9565468430519104,
+    "file": "collocation_20240513_0704.npz"
+  },
+  {
+    "rank": 165,
+    "rmse": 0.9567809700965881,
+    "file": "collocation_20241022_2049.npz"
+  },
+  {
+    "rank": 166,
+    "rmse": 0.9571613073348999,
+    "file": "collocation_20240508_0659.npz"
+  },
+  {
+    "rank": 167,
+    "rmse": 0.959084689617157,
+    "file": "collocation_20240708_1102.npz"
+  },
+  {
+    "rank": 168,
+    "rmse": 0.9608923196792603,
+    "file": "collocation_20240927_1017.npz"
+  },
+  {
+    "rank": 169,
+    "rmse": 0.9617821574211121,
+    "file": "collocation_20240726_1341.npz"
+  },
+  {
+    "rank": 170,
+    "rmse": 0.9646662473678589,
+    "file": "collocation_20240810_0851.npz"
+  },
+  {
+    "rank": 171,
+    "rmse": 0.9658557772636414,
+    "file": "collocation_20241012_1212.npz"
+  },
+  {
+    "rank": 172,
+    "rmse": 0.9679837822914124,
+    "file": "collocation_20240917_0140.npz"
+  },
+  {
+    "rank": 173,
+    "rmse": 0.9686035513877869,
+    "file": "collocation_20240725_1219.npz"
+  },
+  {
+    "rank": 174,
+    "rmse": 0.970561683177948,
+    "file": "collocation_20241124_2158.npz"
+  },
+  {
+    "rank": 175,
+    "rmse": 0.9710596203804016,
+    "file": "collocation_20240401_2033.npz"
+  },
+  {
+    "rank": 176,
+    "rmse": 0.9726008176803589,
+    "file": "collocation_20240525_0958.npz"
+  },
+  {
+    "rank": 177,
+    "rmse": 0.9733795523643494,
+    "file": "collocation_20240831_0205.npz"
+  },
+  {
+    "rank": 178,
+    "rmse": 0.9754749536514282,
+    "file": "collocation_20240216_2310.npz"
+  },
+  {
+    "rank": 179,
+    "rmse": 0.9777897596359253,
+    "file": "collocation_20241126_1434.npz"
+  },
+  {
+    "rank": 180,
+    "rmse": 0.9781189560890198,
+    "file": "collocation_20240916_1027.npz"
+  },
+  {
+    "rank": 181,
+    "rmse": 0.9793576002120972,
+    "file": "collocation_20241103_0001.npz"
+  },
+  {
+    "rank": 182,
+    "rmse": 0.9818259477615356,
+    "file": "collocation_20240114_0318.npz"
+  },
+  {
+    "rank": 183,
+    "rmse": 0.98332279920578,
+    "file": "collocation_20241029_1147.npz"
+  },
+  {
+    "rank": 184,
+    "rmse": 0.9842325448989868,
+    "file": "collocation_20240715_0705.npz"
+  },
+  {
+    "rank": 185,
+    "rmse": 0.9843255281448364,
+    "file": "collocation_20240909_1424.npz"
+  },
+  {
+    "rank": 186,
+    "rmse": 0.9851404428482056,
+    "file": "collocation_20240427_1858.npz"
+  },
+  {
+    "rank": 187,
+    "rmse": 0.9866980910301208,
+    "file": "collocation_20240423_0825.npz"
+  },
+  {
+    "rank": 188,
+    "rmse": 0.986987829208374,
+    "file": "collocation_20241123_1350.npz"
+  },
+  {
+    "rank": 189,
+    "rmse": 0.9879920482635498,
+    "file": "collocation_20240228_0042.npz"
+  },
+  {
+    "rank": 190,
+    "rmse": 0.9882798194885254,
+    "file": "collocation_20240719_0911.npz"
+  },
+  {
+    "rank": 191,
+    "rmse": 0.9893343448638916,
+    "file": "collocation_20240523_1722.npz"
+  },
+  {
+    "rank": 192,
+    "rmse": 0.9893800020217896,
+    "file": "collocation_20241030_2136.npz"
+  },
+  {
+    "rank": 193,
+    "rmse": 0.9910964965820312,
+    "file": "collocation_20240111_0739.npz"
+  },
+  {
+    "rank": 194,
+    "rmse": 0.9921227693557739,
+    "file": "collocation_20240531_2315.npz"
+  },
+  {
+    "rank": 195,
+    "rmse": 0.9926343560218811,
+    "file": "collocation_20240830_2242.npz"
+  },
+  {
+    "rank": 196,
+    "rmse": 0.9952646493911743,
+    "file": "collocation_20240209_2343.npz"
+  },
+  {
+    "rank": 197,
+    "rmse": 0.9972128868103027,
+    "file": "collocation_20240108_0655.npz"
+  },
+  {
+    "rank": 198,
+    "rmse": 0.9982450604438782,
+    "file": "collocation_20240909_1747.npz"
+  },
+  {
+    "rank": 199,
+    "rmse": 1.001814603805542,
+    "file": "collocation_20240503_0512.npz"
+  },
+  {
+    "rank": 200,
+    "rmse": 1.0036438703536987,
+    "file": "collocation_20240817_0817.npz"
+  },
+  {
+    "rank": 201,
+    "rmse": 1.0073803663253784,
+    "file": "collocation_20240904_1924.npz"
+  },
+  {
+    "rank": 202,
+    "rmse": 1.0090135335922241,
+    "file": "collocation_20240917_2158.npz"
+  },
+  {
+    "rank": 203,
+    "rmse": 1.0099061727523804,
+    "file": "collocation_20240827_1836.npz"
+  },
+  {
+    "rank": 204,
+    "rmse": 1.0107769966125488,
+    "file": "collocation_20240722_0954.npz"
+  },
+  {
+    "rank": 205,
+    "rmse": 1.0115532875061035,
+    "file": "collocation_20240423_1006.npz"
+  },
+  {
+    "rank": 206,
+    "rmse": 1.0160937309265137,
+    "file": "collocation_20240527_0919.npz"
+  },
+  {
+    "rank": 207,
+    "rmse": 1.016576886177063,
+    "file": "collocation_20240409_0932.npz"
+  },
+  {
+    "rank": 208,
+    "rmse": 1.0169682502746582,
+    "file": "collocation_20240808_0749.npz"
+  },
+  {
+    "rank": 209,
+    "rmse": 1.0208561420440674,
+    "file": "collocation_20240112_0719.npz"
+  },
+  {
+    "rank": 210,
+    "rmse": 1.021484375,
+    "file": "collocation_20241126_1757.npz"
+  },
+  {
+    "rank": 211,
+    "rmse": 1.0228585004806519,
+    "file": "collocation_20241018_1157.npz"
+  },
+  {
+    "rank": 212,
+    "rmse": 1.0244793891906738,
+    "file": "collocation_20241022_1726.npz"
+  },
+  {
+    "rank": 213,
+    "rmse": 1.0291997194290161,
+    "file": "collocation_20240903_0753.npz"
+  },
+  {
+    "rank": 214,
+    "rmse": 1.0293985605239868,
+    "file": "collocation_20241102_2038.npz"
+  },
+  {
+    "rank": 215,
+    "rmse": 1.0295090675354004,
+    "file": "collocation_20241115_2312.npz"
+  },
+  {
+    "rank": 216,
+    "rmse": 1.0302859544754028,
+    "file": "collocation_20240726_0151.npz"
+  },
+  {
+    "rank": 217,
+    "rmse": 1.0358895063400269,
+    "file": "collocation_20240226_0807.npz"
+  },
+  {
+    "rank": 218,
+    "rmse": 1.03704035282135,
+    "file": "collocation_20241103_2200.npz"
+  },
+  {
+    "rank": 219,
+    "rmse": 1.0375313758850098,
+    "file": "collocation_20241114_1645.npz"
+  },
+  {
+    "rank": 220,
+    "rmse": 1.0380550622940063,
+    "file": "collocation_20240403_1632.npz"
+  },
+  {
+    "rank": 221,
+    "rmse": 1.0386524200439453,
+    "file": "collocation_20240128_1402.npz"
+  },
+  {
+    "rank": 222,
+    "rmse": 1.0398290157318115,
+    "file": "collocation_20240711_0822.npz"
+  },
+  {
+    "rank": 223,
+    "rmse": 1.0402156114578247,
+    "file": "collocation_20240214_1016.npz"
+  },
+  {
+    "rank": 224,
+    "rmse": 1.0487415790557861,
+    "file": "collocation_20241009_0120.npz"
+  },
+  {
+    "rank": 225,
+    "rmse": 1.0495659112930298,
+    "file": "collocation_20240908_0758.npz"
+  },
+  {
+    "rank": 226,
+    "rmse": 1.0496536493301392,
+    "file": "collocation_20240707_0940.npz"
+  },
+  {
+    "rank": 227,
+    "rmse": 1.0516557693481445,
+    "file": "collocation_20240224_1350.npz"
+  },
+  {
+    "rank": 228,
+    "rmse": 1.0545029640197754,
+    "file": "collocation_20241019_0957.npz"
+  },
+  {
+    "rank": 229,
+    "rmse": 1.0552006959915161,
+    "file": "collocation_20240413_0815.npz"
+  },
+  {
+    "rank": 230,
+    "rmse": 1.0565606355667114,
+    "file": "collocation_20240909_0920.npz"
+  },
+  {
+    "rank": 231,
+    "rmse": 1.056793451309204,
+    "file": "collocation_20240527_1424.npz"
+  },
+  {
+    "rank": 232,
+    "rmse": 1.0608069896697998,
+    "file": "collocation_20240202_0903.npz"
+  },
+  {
+    "rank": 233,
+    "rmse": 1.0620205402374268,
+    "file": "collocation_20240414_0614.npz"
+  },
+  {
+    "rank": 234,
+    "rmse": 1.0625545978546143,
+    "file": "collocation_20241203_0532.npz"
+  },
+  {
+    "rank": 235,
+    "rmse": 1.066868782043457,
+    "file": "collocation_20240812_2326.npz"
+  },
+  {
+    "rank": 236,
+    "rmse": 1.0690977573394775,
+    "file": "collocation_20240528_0537.npz"
+  },
+  {
+    "rank": 237,
+    "rmse": 1.0697625875473022,
+    "file": "collocation_20241111_1058.npz"
+  },
+  {
+    "rank": 238,
+    "rmse": 1.0710357427597046,
+    "file": "collocation_20240115_1308.npz"
+  },
+  {
+    "rank": 239,
+    "rmse": 1.0715458393096924,
+    "file": "collocation_20240103_1013.npz"
+  },
+  {
+    "rank": 240,
+    "rmse": 1.0732061862945557,
+    "file": "collocation_20240829_0607.npz"
+  },
+  {
+    "rank": 241,
+    "rmse": 1.0787019729614258,
+    "file": "collocation_20241130_0953.npz"
+  },
+  {
+    "rank": 242,
+    "rmse": 1.0787538290023804,
+    "file": "collocation_20240918_2139.npz"
+  },
+  {
+    "rank": 243,
+    "rmse": 1.0790719985961914,
+    "file": "collocation_20241009_1956.npz"
+  },
+  {
+    "rank": 244,
+    "rmse": 1.079837441444397,
+    "file": "collocation_20240112_0901.npz"
+  },
+  {
+    "rank": 245,
+    "rmse": 1.0808098316192627,
+    "file": "collocation_20240822_0641.npz"
+  },
+  {
+    "rank": 246,
+    "rmse": 1.0839426517486572,
+    "file": "collocation_20240413_1642.npz"
+  },
+  {
+    "rank": 247,
+    "rmse": 1.0853221416473389,
+    "file": "collocation_20240811_0832.npz"
+  },
+  {
+    "rank": 248,
+    "rmse": 1.0858365297317505,
+    "file": "collocation_20240809_1738.npz"
+  },
+  {
+    "rank": 249,
+    "rmse": 1.0869226455688477,
+    "file": "collocation_20241023_1020.npz"
+  },
+  {
+    "rank": 250,
+    "rmse": 1.0904632806777954,
+    "file": "collocation_20241110_0108.npz"
+  },
+  {
+    "rank": 251,
+    "rmse": 1.0934233665466309,
+    "file": "collocation_20240714_0038.npz"
+  },
+  {
+    "rank": 252,
+    "rmse": 1.0961482524871826,
+    "file": "collocation_20240102_1213.npz"
+  },
+  {
+    "rank": 253,
+    "rmse": 1.0970414876937866,
+    "file": "collocation_20240720_0851.npz"
+  },
+  {
+    "rank": 254,
+    "rmse": 1.0988649129867554,
+    "file": "collocation_20240804_1410.npz"
+  },
+  {
+    "rank": 255,
+    "rmse": 1.100777268409729,
+    "file": "collocation_20240715_0019.npz"
+  },
+  {
+    "rank": 256,
+    "rmse": 1.1015474796295166,
+    "file": "collocation_20240801_1327.npz"
+  },
+  {
+    "rank": 257,
+    "rmse": 1.1049163341522217,
+    "file": "collocation_20240815_2228.npz"
+  },
+  {
+    "rank": 258,
+    "rmse": 1.1051182746887207,
+    "file": "collocation_20241013_1657.npz"
+  },
+  {
+    "rank": 259,
+    "rmse": 1.1107784509658813,
+    "file": "collocation_20240411_2044.npz"
+  },
+  {
+    "rank": 260,
+    "rmse": 1.1124906539916992,
+    "file": "collocation_20241010_2118.npz"
+  },
+  {
+    "rank": 261,
+    "rmse": 1.1225749254226685,
+    "file": "collocation_20241007_2217.npz"
+  },
+  {
+    "rank": 262,
+    "rmse": 1.128311038017273,
+    "file": "collocation_20240828_0949.npz"
+  },
+  {
+    "rank": 263,
+    "rmse": 1.1283167600631714,
+    "file": "collocation_20240925_0228.npz"
+  },
+  {
+    "rank": 264,
+    "rmse": 1.1284211874008179,
+    "file": "collocation_20241025_1446.npz"
+  },
+  {
+    "rank": 265,
+    "rmse": 1.1316362619400024,
+    "file": "collocation_20240725_2228.npz"
+  },
+  {
+    "rank": 266,
+    "rmse": 1.1323316097259521,
+    "file": "collocation_20241127_1051.npz"
+  },
+  {
+    "rank": 267,
+    "rmse": 1.132770299911499,
+    "file": "collocation_20240822_1004.npz"
+  },
+  {
+    "rank": 268,
+    "rmse": 1.1357393264770508,
+    "file": "collocation_20241121_1934.npz"
+  },
+  {
+    "rank": 269,
+    "rmse": 1.136635184288025,
+    "file": "collocation_20241014_0952.npz"
+  },
+  {
+    "rank": 270,
+    "rmse": 1.138229250907898,
+    "file": "collocation_20240716_1836.npz"
+  },
+  {
+    "rank": 271,
+    "rmse": 1.1412577629089355,
+    "file": "collocation_20240129_0515.npz"
+  },
+  {
+    "rank": 272,
+    "rmse": 1.1469093561172485,
+    "file": "collocation_20240903_2125.npz"
+  },
+  {
+    "rank": 273,
+    "rmse": 1.1518430709838867,
+    "file": "collocation_20241104_0446.npz"
+  },
+  {
+    "rank": 274,
+    "rmse": 1.1531758308410645,
+    "file": "collocation_20240705_1018.npz"
+  },
+  {
+    "rank": 275,
+    "rmse": 1.1603062152862549,
+    "file": "collocation_20240701_1821.npz"
+  },
+  {
+    "rank": 276,
+    "rmse": 1.1612637042999268,
+    "file": "collocation_20240417_2029.npz"
+  },
+  {
+    "rank": 277,
+    "rmse": 1.1640878915786743,
+    "file": "collocation_20240422_2216.npz"
+  },
+  {
+    "rank": 278,
+    "rmse": 1.1669660806655884,
+    "file": "collocation_20241206_1624.npz"
+  },
+  {
+    "rank": 279,
+    "rmse": 1.1671032905578613,
+    "file": "collocation_20240129_0011.npz"
+  },
+  {
+    "rank": 280,
+    "rmse": 1.1685599088668823,
+    "file": "collocation_20240410_1054.npz"
+  },
+  {
+    "rank": 281,
+    "rmse": 1.1691923141479492,
+    "file": "collocation_20241129_2344.npz"
+  },
+  {
+    "rank": 282,
+    "rmse": 1.170766830444336,
+    "file": "collocation_20241126_1615.npz"
+  },
+  {
+    "rank": 283,
+    "rmse": 1.1726353168487549,
+    "file": "collocation_20240223_0542.npz"
+  },
+  {
+    "rank": 284,
+    "rmse": 1.1749470233917236,
+    "file": "collocation_20240516_0929.npz"
+  },
+  {
+    "rank": 285,
+    "rmse": 1.1758290529251099,
+    "file": "collocation_20240127_1744.npz"
+  },
+  {
+    "rank": 286,
+    "rmse": 1.1765351295471191,
+    "file": "collocation_20240728_2311.npz"
+  },
+  {
+    "rank": 287,
+    "rmse": 1.1773682832717896,
+    "file": "collocation_20240826_0523.npz"
+  },
+  {
+    "rank": 288,
+    "rmse": 1.1797093152999878,
+    "file": "collocation_20240410_0550.npz"
+  },
+  {
+    "rank": 289,
+    "rmse": 1.182843565940857,
+    "file": "collocation_20240224_0845.npz"
+  },
+  {
+    "rank": 290,
+    "rmse": 1.1898587942123413,
+    "file": "collocation_20240712_1812.npz"
+  },
+  {
+    "rank": 291,
+    "rmse": 1.191957950592041,
+    "file": "collocation_20240421_1731.npz"
+  },
+  {
+    "rank": 292,
+    "rmse": 1.1921188831329346,
+    "file": "collocation_20240823_0944.npz"
+  },
+  {
+    "rank": 293,
+    "rmse": 1.196015477180481,
+    "file": "collocation_20240519_0508.npz"
+  },
+  {
+    "rank": 294,
+    "rmse": 1.1964590549468994,
+    "file": "collocation_20240220_1325.npz"
+  },
+  {
+    "rank": 295,
+    "rmse": 1.1986879110336304,
+    "file": "collocation_20241008_1007.npz"
+  },
+  {
+    "rank": 296,
+    "rmse": 1.2048252820968628,
+    "file": "collocation_20240119_1151.npz"
+  },
+  {
+    "rank": 297,
+    "rmse": 1.2064803838729858,
+    "file": "collocation_20240510_2133.npz"
+  },
+  {
+    "rank": 298,
+    "rmse": 1.2079800367355347,
+    "file": "collocation_20240513_2217.npz"
+  },
+  {
+    "rank": 299,
+    "rmse": 1.210175633430481,
+    "file": "collocation_20241027_1226.npz"
+  },
+  {
+    "rank": 300,
+    "rmse": 1.2112252712249756,
+    "file": "collocation_20240913_0944.npz"
+  },
+  {
+    "rank": 301,
+    "rmse": 1.2112723588943481,
+    "file": "collocation_20241115_1121.npz"
+  },
+  {
+    "rank": 302,
+    "rmse": 1.2159978151321411,
+    "file": "collocation_20240726_2350.npz"
+  },
+  {
+    "rank": 303,
+    "rmse": 1.2191966772079468,
+    "file": "collocation_20240708_1748.npz"
+  },
+  {
+    "rank": 304,
+    "rmse": 1.2273225784301758,
+    "file": "collocation_20240903_2306.npz"
+  },
+  {
+    "rank": 305,
+    "rmse": 1.2303218841552734,
+    "file": "collocation_20240520_0449.npz"
+  },
+  {
+    "rank": 306,
+    "rmse": 1.2322994470596313,
+    "file": "collocation_20241009_0806.npz"
+  },
+  {
+    "rank": 307,
+    "rmse": 1.2375010251998901,
+    "file": "collocation_20240914_1933.npz"
+  },
+  {
+    "rank": 308,
+    "rmse": 1.2378638982772827,
+    "file": "collocation_20240812_2144.npz"
+  },
+  {
+    "rank": 309,
+    "rmse": 1.2431659698486328,
+    "file": "collocation_20241202_1237.npz"
+  },
+  {
+    "rank": 310,
+    "rmse": 1.2455546855926514,
+    "file": "collocation_20240508_1707.npz"
+  },
+  {
+    "rank": 311,
+    "rmse": 1.271270751953125,
+    "file": "collocation_20240701_0308.npz"
+  },
+  {
+    "rank": 312,
+    "rmse": 1.2770893573760986,
+    "file": "collocation_20241123_0846.npz"
+  },
+  {
+    "rank": 313,
+    "rmse": 1.2818769216537476,
+    "file": "collocation_20240115_0259.npz"
+  },
+  {
+    "rank": 314,
+    "rmse": 1.2830599546432495,
+    "file": "collocation_20240212_1559.npz"
+  },
+  {
+    "rank": 315,
+    "rmse": 1.2870370149612427,
+    "file": "collocation_20241106_1053.npz"
+  },
+  {
+    "rank": 316,
+    "rmse": 1.2878507375717163,
+    "file": "collocation_20241125_0949.npz"
+  },
+  {
+    "rank": 317,
+    "rmse": 1.2883131504058838,
+    "file": "collocation_20240215_1501.npz"
+  },
+  {
+    "rank": 318,
+    "rmse": 1.2893718481063843,
+    "file": "collocation_20240912_0317.npz"
+  },
+  {
+    "rank": 319,
+    "rmse": 1.3032690286636353,
+    "file": "collocation_20240806_2018.npz"
+  },
+  {
+    "rank": 320,
+    "rmse": 1.3175623416900635,
+    "file": "collocation_20240114_2154.npz"
+  },
+  {
+    "rank": 321,
+    "rmse": 1.3177287578582764,
+    "file": "collocation_20240516_1615.npz"
+  },
+  {
+    "rank": 322,
+    "rmse": 1.3229478597640991,
+    "file": "collocation_20240114_0822.npz"
+  },
+  {
+    "rank": 323,
+    "rmse": 1.3254950046539307,
+    "file": "collocation_20240527_1747.npz"
+  },
+  {
+    "rank": 324,
+    "rmse": 1.3255183696746826,
+    "file": "collocation_20241204_1017.npz"
+  },
+  {
+    "rank": 325,
+    "rmse": 1.3340184688568115,
+    "file": "collocation_20241017_2226.npz"
+  },
+  {
+    "rank": 326,
+    "rmse": 1.3431910276412964,
+    "file": "collocation_20240921_1718.npz"
+  },
+  {
+    "rank": 327,
+    "rmse": 1.3538483381271362,
+    "file": "collocation_20241005_1932.npz"
+  },
+  {
+    "rank": 328,
+    "rmse": 1.35444974899292,
+    "file": "collocation_20241022_1040.npz"
+  },
+  {
+    "rank": 329,
+    "rmse": 1.356482744216919,
+    "file": "collocation_20241101_2058.npz"
+  },
+  {
+    "rank": 330,
+    "rmse": 1.3648762702941895,
+    "file": "collocation_20241021_1927.npz"
+  },
+  {
+    "rank": 331,
+    "rmse": 1.372785210609436,
+    "file": "collocation_20240503_2025.npz"
+  },
+  {
+    "rank": 332,
+    "rmse": 1.3760970830917358,
+    "file": "collocation_20241013_1011.npz"
+  },
+  {
+    "rank": 333,
+    "rmse": 1.3819773197174072,
+    "file": "collocation_20240205_1632.npz"
+  },
+  {
+    "rank": 334,
+    "rmse": 1.3854180574417114,
+    "file": "collocation_20240227_0606.npz"
+  },
+  {
+    "rank": 335,
+    "rmse": 1.387343168258667,
+    "file": "collocation_20240530_1649.npz"
+  },
+  {
+    "rank": 336,
+    "rmse": 1.404836893081665,
+    "file": "collocation_20240225_0503.npz"
+  },
+  {
+    "rank": 337,
+    "rmse": 1.4051686525344849,
+    "file": "collocation_20240707_2130.npz"
+  },
+  {
+    "rank": 338,
+    "rmse": 1.4065773487091064,
+    "file": "collocation_20241014_0811.npz"
+  },
+  {
+    "rank": 339,
+    "rmse": 1.4091757535934448,
+    "file": "collocation_20240516_1110.npz"
+  },
+  {
+    "rank": 340,
+    "rmse": 1.4140008687973022,
+    "file": "collocation_20241014_2142.npz"
+  },
+  {
+    "rank": 341,
+    "rmse": 1.4176244735717773,
+    "file": "collocation_20240905_2046.npz"
+  },
+  {
+    "rank": 342,
+    "rmse": 1.4280774593353271,
+    "file": "collocation_20240516_1938.npz"
+  },
+  {
+    "rank": 343,
+    "rmse": 1.4422956705093384,
+    "file": "collocation_20240823_1812.npz"
+  },
+  {
+    "rank": 344,
+    "rmse": 1.447424054145813,
+    "file": "collocation_20241130_2143.npz"
+  },
+  {
+    "rank": 345,
+    "rmse": 1.449588656425476,
+    "file": "collocation_20241129_1335.npz"
+  },
+  {
+    "rank": 346,
+    "rmse": 1.4496020078659058,
+    "file": "collocation_20240922_2021.npz"
+  },
+  {
+    "rank": 347,
+    "rmse": 1.4555950164794922,
+    "file": "collocation_20240123_0852.npz"
+  },
+  {
+    "rank": 348,
+    "rmse": 1.4578676223754883,
+    "file": "collocation_20241016_2104.npz"
+  },
+  {
+    "rank": 349,
+    "rmse": 1.4735161066055298,
+    "file": "collocation_20240531_2134.npz"
+  },
+  {
+    "rank": 350,
+    "rmse": 1.4752061367034912,
+    "file": "collocation_20240902_2144.npz"
+  },
+  {
+    "rank": 351,
+    "rmse": 1.477091908454895,
+    "file": "collocation_20241001_1908.npz"
+  },
+  {
+    "rank": 352,
+    "rmse": 1.4800372123718262,
+    "file": "collocation_20240725_0715.npz"
+  },
+  {
+    "rank": 353,
+    "rmse": 1.48151695728302,
+    "file": "collocation_20240503_1521.npz"
+  },
+  {
+    "rank": 354,
+    "rmse": 1.4860992431640625,
+    "file": "collocation_20241104_1636.npz"
+  },
+  {
+    "rank": 355,
+    "rmse": 1.49014151096344,
+    "file": "collocation_20240908_1625.npz"
+  },
+  {
+    "rank": 356,
+    "rmse": 1.5019950866699219,
+    "file": "collocation_20241130_1457.npz"
+  },
+  {
+    "rank": 357,
+    "rmse": 1.5135518312454224,
+    "file": "collocation_20241015_1619.npz"
+  },
+  {
+    "rank": 358,
+    "rmse": 1.5485106706619263,
+    "file": "collocation_20241105_1617.npz"
+  },
+  {
+    "rank": 359,
+    "rmse": 1.5799087285995483,
+    "file": "collocation_20240803_1611.npz"
+  },
+  {
+    "rank": 360,
+    "rmse": 1.6009507179260254,
+    "file": "collocation_20240430_1942.npz"
+  },
+  {
+    "rank": 361,
+    "rmse": 1.6369367837905884,
+    "file": "collocation_20240916_2036.npz"
+  },
+  {
+    "rank": 362,
+    "rmse": 1.6429890394210815,
+    "file": "collocation_20240129_1020.npz"
+  },
+  {
+    "rank": 363,
+    "rmse": 1.6681495904922485,
+    "file": "collocation_20240529_1527.npz"
+  },
+  {
+    "rank": 364,
+    "rmse": 1.7320756912231445,
+    "file": "collocation_20240805_2037.npz"
+  },
+  {
+    "rank": 365,
+    "rmse": 1.7460607290267944,
+    "file": "collocation_20241129_1012.npz"
+  },
+  {
+    "rank": 366,
+    "rmse": 1.7574211359024048,
+    "file": "collocation_20241005_1609.npz"
+  },
+  {
+    "rank": 367,
+    "rmse": 1.7930779457092285,
+    "file": "collocation_20240703_1601.npz"
+  },
+  {
+    "rank": 368,
+    "rmse": 1.8020128011703491,
+    "file": "collocation_20240818_2130.npz"
+  },
+  {
+    "rank": 369,
+    "rmse": 1.8138275146484375,
+    "file": "collocation_20240109_1503.npz"
+  },
+  {
+    "rank": 370,
+    "rmse": 1.8253780603408813,
+    "file": "collocation_20240229_1032.npz"
+  },
+  {
+    "rank": 371,
+    "rmse": 1.9015777111053467,
+    "file": "collocation_20240527_2110.npz"
+  },
+  {
+    "rank": 372,
+    "rmse": 1.9105949401855469,
+    "file": "collocation_20240516_2119.npz"
+  },
+  {
+    "rank": 373,
+    "rmse": 1.9462535381317139,
+    "file": "collocation_20240130_1505.npz"
+  },
+  {
+    "rank": 374,
+    "rmse": 1.9598815441131592,
+    "file": "collocation_20240105_1257.npz"
+  },
+  {
+    "rank": 375,
+    "rmse": 2.0099399089813232,
+    "file": "collocation_20240505_1805.npz"
+  },
+  {
+    "rank": 376,
+    "rmse": 2.012418031692505,
+    "file": "collocation_20240704_2046.npz"
+  },
+  {
+    "rank": 377,
+    "rmse": 2.0291025638580322,
+    "file": "collocation_20241120_1307.npz"
+  },
+  {
+    "rank": 378,
+    "rmse": 2.0498740673065186,
+    "file": "collocation_20240702_1943.npz"
+  },
+  {
+    "rank": 379,
+    "rmse": 2.057500123977661,
+    "file": "collocation_20240729_2111.npz"
+  },
+  {
+    "rank": 380,
+    "rmse": 2.0670762062072754,
+    "file": "collocation_20240831_1900.npz"
+  },
+  {
+    "rank": 381,
+    "rmse": 2.138167381286621,
+    "file": "collocation_20241129_1517.npz"
+  },
+  {
+    "rank": 382,
+    "rmse": 2.236074686050415,
+    "file": "collocation_20240929_1806.npz"
+  },
+  {
+    "rank": 383,
+    "rmse": 2.2955453395843506,
+    "file": "collocation_20240925_1600.npz"
+  },
+  {
+    "rank": 384,
+    "rmse": 2.3258328437805176,
+    "file": "collocation_20240929_1947.npz"
+  },
+  {
+    "rank": 385,
+    "rmse": 2.542142152786255,
+    "file": "collocation_20240814_1924.npz"
+  },
+  {
+    "rank": 386,
+    "rmse": 2.6566836833953857,
+    "file": "collocation_20240719_1557.npz"
+  },
+  {
+    "rank": 387,
+    "rmse": 2.9842255115509033,
+    "file": "collocation_20240127_1603.npz"
+  }
+]

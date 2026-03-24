@@ -1,0 +1,94 @@
+\documentclass[preprint,12pt]{elsarticle}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\journal{Neurocomputing}
+
+\begin{document}
+\begin{frontmatter}
+\title{Physics-Guided Satellite Data Assimilation with Ablation-Oriented Evaluation}
+\author{Liu Ruixin}
+\address{School of Automation, Southeast University, Nanjing, China}
+\begin{abstract}
+This draft reports an ablation-oriented neural assimilation pipeline. We evaluate model accuracy, computational overhead, and statistical significance.
+\end{abstract}
+\begin{keyword}
+Satellite data assimilation \sep Neural network \sep Ablation study \sep Statistical significance
+\end{keyword}
+\end{frontmatter}
+
+\section{Results}
+\input{results_paper.tex}
+
+\subsection{Layer-wise Performance}
+\input{grouped_rmse_table.tex}
+
+\subsection{Statistical Significance}
+\input{significance_tests.tex}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_combined_rmse_improve.png}
+\caption{Combined RMSE and improvement comparison.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{vertical_rmse_comparison.png}
+\caption{Vertical RMSE profiles across pressure levels.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_loss_curves.png}
+\caption{Training and validation loss curves.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_resources.png}
+\caption{Model parameters, GFLOPs, and VRAM usage.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_rmse_vs_params.png}
+\caption{RMSE vs model size trade-off.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_latency_throughput.png}
+\caption{Inference latency and throughput comparison.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_error_distribution.png}
+\caption{Prediction error probability density.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_spatial_error_maps.png}
+\caption{Spatial mean bias and RMSE maps at representative levels.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_forest_plot_significance.png}
+\caption{Forest plot of paired bootstrap significance tests.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{fig_grouped_rmse_bar.png}
+\caption{RMSE breakdown by atmospheric layer group.}
+\end{figure}
+
+\section{Conclusion}
+See generated figures and tables for detailed analysis.
+\end{document}

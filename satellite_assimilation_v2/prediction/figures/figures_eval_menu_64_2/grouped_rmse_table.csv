@@ -1,0 +1,18 @@
+Method,Type,Strat RMSE,Trop RMSE,LowTrop RMSE,Global RMSE
+Background (ERA5),bkg,2.1357,1.5314,2.3039,2.0506
+OI/1DVar (B2),oi,2.2158,1.5603,2.3333,2.0954
+Ours-ours_with_full,ours,1.0374,0.7903,1.4371,1.1588
+Ablation-v1_noaux_mse,ablation,1.1439,0.8624,1.5675,1.2673
+Ablation-v2_noaux_no_deep_supervision_64,ablation,1.1686,0.8705,1.5787,1.2813
+Ablation-v3_fusion_add_no_deepsupervision_64,ablation,1.3594,0.9441,1.7445,1.4311
+Ablation-v4_noaux_spectral_stem_64,ablation,1.9598,1.3531,2.0674,1.8490
+Ablation-v5_noaux_no_mask_aware_64,ablation,1.0664,0.8322,1.5618,1.2381
+Ablation-v6_noaux_no_mask_aware_64,ablation,1.2885,0.9388,1.6722,1.3745
+Baseline-compare_b10_with_mamba,compare,1.0664,0.8043,1.4722,1.1870
+Baseline-compare_b3_vanilla_unet_64,compare,1.9725,1.3613,1.8614,1.7642
+Baseline-compare_b4_fuxi_da_64,compare,1.8625,1.4753,1.7497,1.7086
+Baseline-compare_b4_fuxi_da_64_tttf,compare,1.7958,1.3210,1.5317,1.5584
+Baseline-compare_b5_attn_unet_64,compare,2.0093,1.4646,1.9490,1.8379
+Baseline-compare_b6_pixel_mlp_64,compare,2.3079,1.6077,1.9781,1.9845
+Baseline-compare_b7_res_unet_64,compare,2.1363,1.6438,1.9886,1.9399
+Baseline-compare_b9_fengwu_64,compare,1.8120,1.1470,1.6784,1.5841
