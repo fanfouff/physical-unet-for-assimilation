@@ -204,6 +204,8 @@ def build_yaml_dict(args, experiments: list) -> dict:
 
         # ── OI 基线路径（可选） ──
         "oi_results_dir": str(args.oi_results_dir) if args.oi_results_dir else None,
+        "var3d_results_dir": str(args.var3d_results_dir) if args.var3d_results_dir else None,
+        "var4d_results_dir": str(args.var4d_results_dir) if args.var4d_results_dir else None,
 
         # ── 实验列表 ──
         "experiments": experiments,
@@ -262,6 +264,16 @@ def main():
         "--oi_results_dir",
         default=None,
         help="OI/1DVar 结果目录（可选）"
+    )
+    p.add_argument(
+        "--var3d_results_dir",
+        default=None,
+        help="3DVar 结果目录（可选）"
+    )
+    p.add_argument(
+        "--var4d_results_dir",
+        default=None,
+        help="4DVar 结果目录（可选）"
     )
     p.add_argument(
         "--ckpt_name",
