@@ -1,15 +1,15 @@
 """
 ===============================================================================
-卫星数据同化深度学习框架 V2.0 - 顶会/顶刊标准版
-Satellite Data Assimilation Deep Learning Framework
+卫星-背景融合与离线状态订正框架 V2.0
+Satellite Assimilation and Offline State Refinement Framework
 ===============================================================================
 
-改进内容 (基于审稿意见):
-1. 懒加载机制 (Lazy Loading) - 支持TB级数据
-2. 辅助地理/时间信息嵌入 (Auxiliary Inputs) - 纬度/经度/太阳天顶角
+改进内容:
+1. 懒加载机制 (Lazy Loading) - 支持大规模样本
+2. 地球物理条件编码 (Geophysical Conditioning) - 纬度/经度/太阳天顶角/地表掩码
 3. 掩码感知卷积 (Mask-Aware Convolution) - 显式传递缺测信息
-4. 非线性融合策略 (Non-linear Fusion) - Concat+Conv替代线性加法
-5. 消融实验评估指标 (Ablation Metrics) - 分层RMSE/通道显著性/缺测鲁棒性
+4. 非线性融合策略 (Non-linear Fusion)
+5. 消融实验评估指标 (Ablation Metrics)
 
 ===============================================================================
 """
@@ -648,73 +648,129 @@ class SEBlock(nn.Module):
 
 class AuxiliaryEncoder(nn.Module):
     """
-    辅助地理/时间特征编码器
-    
-    输入特征:
-    - 纬度 (Latitude): 影响对流层顶高度
-    - 经度 (Longitude): 影响局部气候特征
-    - 太阳天顶角 (Solar Zenith Angle): 影响辐射加热
-    - 地表类型 (Land Mask): 影响发射率
-    
-    编码方式:
-    - 连续变量: 周期编码 (sin/cos) + 线性投影
-    - 离散变量: Embedding
+    地球物理条件编码器 (geophysical context encoder).
+
+    输入默认约定为 4 通道:
+    - ch0: latitude
+    - ch1: longitude
+    - ch2: solar zenith angle
+    - ch3: land mask (binary/categorical)
+
+    设计原则:
+    - 几何/角度变量使用周期编码 (sin/cos)
+    - land mask 使用独立分支，不做周期编码
+    - 多分支拼接后投影到统一 embedding 维度
     """
-    
+
     def __init__(
         self,
         n_aux_features: int = 4,
         embed_dim: int = 32,
-        use_periodic_encoding: bool = True
+        use_periodic_encoding: bool = True,
+        use_periodic_lat: bool = True,
+        use_periodic_sza: bool = True,
     ):
-        """
-        Args:
-            n_aux_features: 辅助特征数
-            embed_dim: 嵌入维度
-            use_periodic_encoding: 是否使用周期编码
-        """
         super().__init__()
-        
+
+        self.n_aux_features = n_aux_features
+        self.embed_dim = embed_dim
         self.use_periodic_encoding = use_periodic_encoding
-        
-        if use_periodic_encoding:
-            # 周期编码: 每个特征 -> (sin, cos) -> 2倍维度
-            self.encoder = nn.Sequential(
-                nn.Conv2d(n_aux_features * 2, embed_dim, 1, bias=False),
-                nn.BatchNorm2d(embed_dim),
-                nn.GELU()
-            )
-        else:
-            # 简单线性投影
-            self.encoder = nn.Sequential(
+        self.use_periodic_lat = use_periodic_lat
+        self.use_periodic_sza = use_periodic_sza
+
+        # 如果输入通道不足4，则回退到简单投影，保持接口兼容。
+        if n_aux_features < 4:
+            self.fallback = nn.Sequential(
                 nn.Conv2d(n_aux_features, embed_dim, 1, bias=False),
                 nn.BatchNorm2d(embed_dim),
-                nn.GELU()
+                nn.GELU(),
             )
-    
-    def _periodic_encode(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        周期编码
-        
-        Args:
-            x: [B, C, H, W] 值域 [-1, 1] 或 [0, 1]
-        Returns:
-            [B, 2C, H, W]
-        """
-        # 归一化到 [0, 2π]
+            self.periodic_proj = None
+            self.land_proj = None
+            self.extra_proj = None
+            self.out_proj = None
+            return
+
+        # 周期分支输入维度: lon固定2维; lat/sza按开关决定1或2维。
+        periodic_in_ch = 0
+        periodic_in_ch += 2 if use_periodic_encoding and use_periodic_lat else 1
+        periodic_in_ch += 2  # lon始终采用周期编码
+        periodic_in_ch += 2 if use_periodic_encoding and use_periodic_sza else 1
+
+        periodic_embed = max(embed_dim // 2, 8)
+        land_embed = max(embed_dim // 8, 4)
+        extra_in_ch = max(n_aux_features - 4, 0)
+        extra_embed = max(embed_dim // 8, 4) if extra_in_ch > 0 else 0
+
+        self.fallback = None
+        self.periodic_proj = nn.Sequential(
+            nn.Conv2d(periodic_in_ch, periodic_embed, 1, bias=False),
+            nn.BatchNorm2d(periodic_embed),
+            nn.GELU(),
+        )
+        self.land_proj = nn.Sequential(
+            nn.Conv2d(1, land_embed, 1, bias=False),
+            nn.BatchNorm2d(land_embed),
+            nn.GELU(),
+        )
+        self.extra_proj = None
+        if extra_in_ch > 0:
+            self.extra_proj = nn.Sequential(
+                nn.Conv2d(extra_in_ch, extra_embed, 1, bias=False),
+                nn.BatchNorm2d(extra_embed),
+                nn.GELU(),
+            )
+
+        fusion_in = periodic_embed + land_embed + (extra_embed if extra_in_ch > 0 else 0)
+        self.out_proj = nn.Sequential(
+            nn.Conv2d(fusion_in, embed_dim, 1, bias=False),
+            nn.BatchNorm2d(embed_dim),
+            nn.GELU(),
+        )
+
+    @staticmethod
+    def _periodic_encode_single(x: torch.Tensor) -> torch.Tensor:
+        """对单通道变量进行 sin/cos 周期展开。"""
         x_scaled = x * torch.pi
         return torch.cat([torch.sin(x_scaled), torch.cos(x_scaled)], dim=1)
-    
+
     def forward(self, aux: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            aux: [B, C_aux, H, W]
+            aux: [B, 4, H, W] (或 >=4)
         Returns:
             [B, embed_dim, H, W]
         """
-        if self.use_periodic_encoding:
-            aux = self._periodic_encode(aux)  # [B, 2*C_aux, H, W]
-        return self.encoder(aux)  # [B, embed_dim, H, W]
+        if self.fallback is not None:
+            return self.fallback(aux)
+
+        lat = aux[:, 0:1]
+        lon = aux[:, 1:2]
+        sza = aux[:, 2:3]
+        land = aux[:, 3:4]
+
+        periodic_parts = []
+        if self.use_periodic_encoding and self.use_periodic_lat:
+            periodic_parts.append(self._periodic_encode_single(lat))
+        else:
+            periodic_parts.append(lat)
+
+        periodic_parts.append(self._periodic_encode_single(lon))
+
+        if self.use_periodic_encoding and self.use_periodic_sza:
+            periodic_parts.append(self._periodic_encode_single(sza))
+        else:
+            periodic_parts.append(sza)
+
+        periodic_feat = self.periodic_proj(torch.cat(periodic_parts, dim=1))
+        land_feat = self.land_proj(land)
+
+        feat_list = [periodic_feat, land_feat]
+        if self.extra_proj is not None and aux.shape[1] > 4:
+            extra = aux[:, 4:]
+            feat_list.append(self.extra_proj(extra))
+
+        return self.out_proj(torch.cat(feat_list, dim=1))
 
 
 # =============================================================================
@@ -853,7 +909,7 @@ class MaskAwareConv2d(nn.Module):
 
 class SpectralAdapterStemV2(nn.Module):
     """
-    光谱适配器茎干模块 V2 - 顶会标准版
+    光谱适配器茎干模块 V2
     
     改进点:
     1. 辅助特征融合 (Auxiliary Feature Fusion)
@@ -910,7 +966,7 @@ class SpectralAdapterStemV2(nn.Module):
         self.mask_aware = mask_aware
         
         # =====================================================================
-        # 观测投影分支: 模拟逆辐射传输模型 (RTM^{-1})
+        # 观测投影分支: 通道投影
         # X_obs [B, 17, H, W] -> [B, C_lat, H, W]
         # =====================================================================
         self.obs_projection = nn.Sequential(
@@ -1041,7 +1097,7 @@ class SpectralAdapterStemV2(nn.Module):
         B, _, H, W = obs.shape
         
         # =================================================================
-        # Step 1: 观测投影 (逆RTM)
+        # Step 1: 观测通道投影
         # =================================================================
         obs_feat = self.obs_projection(obs)  # [B, C_lat, H, W]
         
@@ -1275,7 +1331,10 @@ class AssimilationMetrics:
         model: nn.Module,
         dataloader: DataLoader,
         gap_ratios: List[float] = [0.0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0],
-        device: str = 'cpu'
+        device: str = 'cpu',
+        seed: Optional[int] = None,
+        mask_mode: str = 'random',
+        block_size: int = 8,
     ) -> Dict[str, List[float]]:
         """
         缺测鲁棒性测试
@@ -1287,16 +1346,40 @@ class AssimilationMetrics:
             dataloader: 数据加载器
             gap_ratios: 测试的缺失比例列表
             device: 设备
+            seed: 随机种子 (None 表示非确定性)
+            mask_mode: 人工缺测模式 ('random' 或 'block')
+            block_size: block 模式下的方块边长
         
         Returns:
             {
                 'gap_ratios': 缺失比例,
                 'rmse_values': 对应RMSE,
-                'baseline_rmse': 100%缺失时的RMSE (背景场误差)
+                'original_valid_coverage': 原始有效覆盖率,
+                'effective_coverage': 人工缺测后的有效覆盖率,
+                'baseline_rmse': 100%缺失时的RMSE
             }
         """
         model.eval()
         results = {ratio: [] for ratio in gap_ratios}
+        original_cov = {ratio: [] for ratio in gap_ratios}
+        effective_cov = {ratio: [] for ratio in gap_ratios}
+
+        rng = None
+        if seed is not None:
+            rng = torch.Generator(device='cpu')
+            rng.manual_seed(seed)
+
+        def _rand(shape, dev):
+            if rng is None:
+                return torch.rand(shape, device=dev)
+            return torch.rand(shape, generator=rng, device='cpu').to(dev)
+
+        def _randint(low: int, high: int):
+            if high <= low:
+                return low
+            if rng is None:
+                return int(torch.randint(low, high, (1,)).item())
+            return int(torch.randint(low, high, (1,), generator=rng).item())
         
         with torch.no_grad():
             for batch in dataloader:
@@ -1313,10 +1396,38 @@ class AssimilationMetrics:
                         # 使用原始掩码
                         mask = original_mask
                     else:
-                        # 人为添加缺失
+                        # 仅在原本有效的位置添加缺失
                         B, _, H, W = obs.shape
-                        artificial_gap = (torch.rand(B, 1, H, W, device=device) < ratio)
-                        mask = original_mask * (~artificial_gap).float()
+                        valid = original_mask > 0.5
+
+                        if mask_mode == 'block':
+                            drop_map = torch.zeros_like(valid)
+                            for bi in range(B):
+                                valid_count = int(valid[bi, 0].sum().item())
+                                target_drop = int(valid_count * ratio)
+                                dropped = 0
+                                attempts = 0
+                                max_attempts = max(20, target_drop * 2)
+                                while dropped < target_drop and attempts < max_attempts:
+                                    attempts += 1
+                                    y0 = _randint(0, max(1, H - block_size + 1))
+                                    x0 = _randint(0, max(1, W - block_size + 1))
+                                    y1 = min(H, y0 + block_size)
+                                    x1 = min(W, x0 + block_size)
+                                    block = torch.zeros((H, W), dtype=torch.bool, device=device)
+                                    block[y0:y1, x0:x1] = True
+                                    add = block & valid[bi, 0] & (~drop_map[bi, 0])
+                                    if add.any():
+                                        drop_map[bi, 0] |= add
+                                        dropped = int(drop_map[bi, 0].sum().item())
+                        else:
+                            rand = _rand(original_mask.shape, device)
+                            drop_map = (rand < ratio) & valid
+
+                        mask = original_mask * (~drop_map).float()
+
+                    original_cov[ratio].append(float(original_mask.mean().item()))
+                    effective_cov[ratio].append(float(mask.mean().item()))
                     
                     # 模型前向传播
                     if hasattr(model, 'forward'):
@@ -1336,7 +1447,12 @@ class AssimilationMetrics:
         return {
             'gap_ratios': gap_ratios,
             'rmse_values': rmse_values,
-            'baseline_rmse': rmse_values[-1] if gap_ratios[-1] == 1.0 else None
+            'original_valid_coverage': [float(np.mean(original_cov[r])) for r in gap_ratios],
+            'effective_coverage': [float(np.mean(effective_cov[r])) for r in gap_ratios],
+            'baseline_rmse': rmse_values[-1] if gap_ratios and gap_ratios[-1] == 1.0 else None,
+            # backward-compatible aliases
+            'coverage_before': [float(np.mean(original_cov[r])) for r in gap_ratios],
+            'coverage_after': [float(np.mean(effective_cov[r])) for r in gap_ratios],
         }
     
     @staticmethod

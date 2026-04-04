@@ -1,23 +1,17 @@
-source ~/miniconda3/bin/activate
-conda activate fuxi
-cd ~/Unet/satellite_assimilation_v2/prediction/
-# python3 gen_eval_config.py \
-#   --exp_root /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64 \
-#   --test_root /data2/lrx/npz_64_real/test \
-#   --stats_file /data2/lrx/npz_64_real/stats.npz \
-#   --increment_stats /data2/lrx/npz_64_real/increment_stats.npz \
-#   --output_dir figures/figures_ablation_comparison_v4_64x64 \
-#   --output_yaml eval_config_64.yaml \
-#   --skip_missing
-
-# ────── Step 3: 运行评估 ──────
-# python3 prediction/eval_all_experiments.py --config eval_config_64.yaml
-
 #!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+# 可选自动激活 conda 环境（默认 fuxi）
+if [[ "${AUTO_ACTIVATE_CONDA:-1}" == "1" && -f "$HOME/miniconda3/bin/activate" ]]; then
+  # shellcheck disable=SC1091
+  source "$HOME/miniconda3/bin/activate"
+  conda activate "${CONDA_ENV:-fuxi}" || {
+    echo "[WARN] conda 环境激活失败，继续使用当前 Python: $PYTHON_BIN"
+  }
+fi
 
 GEN_SCRIPT="$SCRIPT_DIR/gen_eval_config.py"
 EVAL_SCRIPT="$SCRIPT_DIR/eval_all_experiments.py"
@@ -25,13 +19,13 @@ EVAL_SCRIPT="$SCRIPT_DIR/eval_all_experiments.py"
 DEFAULT_ROOT_64="/home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64"
 DEFAULT_ROOT_128="/home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128"
 
-DEFAULT_TEST_ROOT_64="/data2/lrx/npz_64_real/test"
-DEFAULT_STATS_FILE_64="/data2/lrx/npz_64_real/stats.npz"
-DEFAULT_INCREMENT_STATS_64="/data2/lrx/npz_64_real/increment_stats.npz"
+DEFAULT_TEST_ROOT_64="/data1/lrx/npz_64_real/test"
+DEFAULT_STATS_FILE_64="/data1/lrx/npz_64_real/stats.npz"
+DEFAULT_INCREMENT_STATS_64="/data1/lrx/npz_64_real/increment_stats.npz"
 
-DEFAULT_TEST_ROOT_128="/data2/lrx/npz_128_real/test"
-DEFAULT_STATS_FILE_128="/data2/lrx/npz_128_real/stats.npz"
-DEFAULT_INCREMENT_STATS_128="/data2/lrx/npz_128_real/increment_stats.npz"
+DEFAULT_TEST_ROOT_128="/data1/lrx/npz_128_real/test"
+DEFAULT_STATS_FILE_128="/data1/lrx/npz_128_real/stats.npz"
+DEFAULT_INCREMENT_STATS_128="/data1/lrx/npz_128_real/increment_stats.npz"
 
 # 先给默认值，后续会根据 ROOT_MODE 自动改写
 DEFAULT_TEST_ROOT="$DEFAULT_TEST_ROOT_64"
@@ -133,7 +127,7 @@ echo "[INFO] 已自动匹配默认数据集: ${DATA_SCALE}x${DATA_SCALE}"
 echo "       test_root=$DEFAULT_TEST_ROOT"
 
 TS="$(date +%Y%m%d_%H%M%S)"
-DEFAULT_YAML="/tmp/eval_config_auto_${TS}.yaml"
+DEFAULT_YAML="$SCRIPT_DIR/eval_configs/eval_config_auto_${DATA_SCALE}_${TS}.yaml"
 DEFAULT_OUT_DIR="$SCRIPT_DIR/figures/figures_eval_menu_${DATA_SCALE}"
 
 read -r -p "test_root [$DEFAULT_TEST_ROOT]: " TEST_ROOT
@@ -147,6 +141,8 @@ OUTPUT_YAML="${OUTPUT_YAML:-$DEFAULT_YAML}"
 read -r -p "评估输出目录 [$DEFAULT_OUT_DIR]: " OUTPUT_DIR
 OUTPUT_DIR="${OUTPUT_DIR:-$DEFAULT_OUT_DIR}"
 
+mkdir -p "$(dirname "$OUTPUT_YAML")" "$OUTPUT_DIR"
+
 echo
 echo "[INFO] 生成 YAML 配置..."
 "$PYTHON_BIN" "$GEN_SCRIPT" \
@@ -155,7 +151,8 @@ echo "[INFO] 生成 YAML 配置..."
   --stats_file "$STATS_FILE" \
   --increment_stats "$INC_STATS" \
   --output_dir "$OUTPUT_DIR" \
-  --output_yaml "$OUTPUT_YAML"
+  --output_yaml "$OUTPUT_YAML" \
+  --skip_missing
 
 echo
 echo "[INFO] YAML 中可选实验:"
@@ -175,7 +172,7 @@ for i, exp in enumerate(cfg.get("experiments", []), 1):
 PY
 
 echo
-read -r -p "选择实验ID (逗号分隔, 或 all) [all]: " EXP_IDS
+read -r -p "选择实验ID (逗号分隔, 支持 b11/b12 简写, 或 all) [all]: " EXP_IDS
 EXP_IDS="${EXP_IDS:-all}"
 
 read -r -p "选择实验类型 (ours,ablation,compare, 或 all) [all]: " EXP_TYPES

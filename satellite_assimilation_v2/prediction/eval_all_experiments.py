@@ -84,10 +84,98 @@ PLOT_OPTIONS = [
 ]
 
 
+# =============================================================================
+# 标签清理映射（将内部实验 ID 映射为论文级名称）
+# =============================================================================
+LABEL_MAP = {
+    # ---- Ours ----
+    "Ours-ours_with_full": "PASNet (Ours)",
+    "ours_with_full": "PASNet (Ours)",
+    "PASNet (Ours)": "PASNet (Ours)",
+    # ---- Ablation ----
+    "Ablation-v1_noaux_mse": "(v1) w/o L_vert",
+    "Ablation-v2_noaux_no_deep_supervision_64": "(v2) w/o deep sup.",
+    "Ablation-v3_fusion_add_no_deepsupervision_64": "(v3) Additive fusion",
+    "Ablation-v4_noaux_spectral_stem_64": "(v4) w/o Spectral Stem",
+    "Ablation-v5_noaux_no_mask_aware_64": "(v5) w/o mask-aware",
+    "Ablation-v6_noaux_no_mask_aware_64": "(v6) w/o mask-aware (v6)",
+    # ---- Baselines ----
+    "Baseline-compare_b3_vanilla_unet_64": "Vanilla U-Net",
+    "Baseline-compare_b4_fuxi_da_64": "FuXi-DA",
+    "Baseline-compare_b4_fuxi_da_64_tttf": "FuXi-DA (tuned)",
+    "Baseline-compare_b5_attn_unet_64": "Attention U-Net",
+    "Baseline-compare_b6_pixel_mlp_64": "Pixel-MLP",
+    "Baseline-compare_b7_res_unet_64": "ResU-Net",
+    "Baseline-compare_b9_fengwu_64": "FengWu",
+    "Baseline-compare_b10_with_mamba": "Mamba (stem)",
+    "Baseline-compare_b11_background_only_64": "Background-only (B11)",
+    "Baseline-compare_b12_obs_only_64": "Obs-only (B12)",
+    "Baseline-compare_b11_background_only_128": "Background-only (B11)",
+    "Baseline-compare_b12_obs_only_128": "Obs-only (B12)",
+    # ---- References ----
+    "Background (ERA5)": "Background (ERA5)",
+    "OI/1DVar (B2)": "OI/1DVar",
+}
+
+# 表格/文中使用的核心方法子集（用于避免图表过于拥挤）
+CORE_METHODS_FOR_VERTICAL = {
+    "Background (ERA5)", "OI/1DVar", "PASNet (Ours)",
+    "Vanilla U-Net", "FuXi-DA (tuned)", "FengWu",
+    "(v4) w/o Spectral Stem", "Mamba (stem)",
+    "Background-only (B11)", "Obs-only (B12)",
+}
+
+CORE_METHODS_FOR_GAP = {
+    "PASNet (Ours)", "Mamba (stem)", "(v3) Additive fusion",
+    "FengWu", "FuXi-DA (tuned)", "Attention U-Net",
+    "ResU-Net", "Vanilla U-Net", "FuXi-DA",
+    "Background-only (B11)", "Obs-only (B12)",
+}
+
+
+def clean_label(raw_label: str) -> str:
+    """将内部实验 ID 映射为论文级名称。"""
+    if raw_label in LABEL_MAP:
+        return LABEL_MAP[raw_label]
+
+    for prefix in ("Ours-", "Ablation-", "Baseline-compare_"):
+        if raw_label.startswith(prefix):
+            stripped = raw_label[len(prefix):]
+            if stripped in LABEL_MAP:
+                return LABEL_MAP[stripped]
+
+    cleaned = re.sub(r"_(?:64|128)$", "", raw_label)
+    if cleaned in LABEL_MAP:
+        return LABEL_MAP[cleaned]
+    return raw_label
+
+
 def _parse_csv_set(value: str) -> Set[str]:
     if not value:
         return set()
     return {x.strip() for x in value.split(",") if x.strip()}
+
+
+def _id_query_matches_exp_id(query: str, exp_id: str) -> bool:
+    """Allow shorthand id matching, e.g. b11 -> compare_b11_background_only_64."""
+    q = str(query or "").strip().lower()
+    eid = str(exp_id or "").strip().lower()
+    if not q or not eid:
+        return False
+
+    if q == eid or eid.startswith(q + "_"):
+        return True
+
+    for prefix in ("compare_", "ablation_", "ours_"):
+        if eid.startswith(prefix):
+            no_prefix = eid[len(prefix):]
+            if q == no_prefix or no_prefix.startswith(q + "_"):
+                return True
+
+    if re.fullmatch(r"b\d+", q):
+        return re.search(rf"(^|[_-]){re.escape(q)}([_-]|$)", eid) is not None
+
+    return False
 
 
 def resolve_plot_selection(raw_plots: str) -> Set[str]:
@@ -110,14 +198,17 @@ def resolve_plot_selection(raw_plots: str) -> Set[str]:
 def filter_experiments(experiments: list, exp_ids_csv: str, exp_types_csv: str) -> list:
     """按 id/type 过滤实验列表。"""
     id_set = _parse_csv_set(exp_ids_csv)
+    id_set_lower = {x.lower() for x in id_set}
     type_set = {x.lower() for x in _parse_csv_set(exp_types_csv)}
 
-    id_filter_on = bool(id_set and "all" not in {x.lower() for x in id_set})
+    id_filter_on = bool(id_set_lower and "all" not in id_set_lower)
     type_filter_on = bool(type_set and "all" not in type_set)
 
     out = []
     for exp in experiments:
-        if id_filter_on and exp.get("id") not in id_set:
+        if id_filter_on and not any(
+            _id_query_matches_exp_id(q, exp.get("id")) for q in id_set_lower
+        ):
             continue
         if type_filter_on and str(exp.get("type", "")).lower() not in type_set:
             continue
@@ -234,6 +325,13 @@ def _is_finite(x) -> bool:
         return False
 
 
+def save_figure(out_path: Path, dpi: int = 300, bbox_inches: str = "tight"):
+    """Save both PNG (raster) and PDF (vector) for each figure."""
+    out_path = Path(out_path)
+    plt.savefig(out_path, dpi=dpi, bbox_inches=bbox_inches)
+    plt.savefig(out_path.with_suffix(".pdf"), bbox_inches=bbox_inches)
+
+
 def _resolve_baseline_dir(yaml_cfg: Optional[dict], base_dir: str, test_res: Optional[int], yaml_key: str, default_prefix: str) -> Optional[str]:
     """Resolve a baseline results directory from YAML or resolution-based default."""
     cfg = yaml_cfg or {}
@@ -341,14 +439,34 @@ def _load_model(ckpt_path, device="cuda"):
     model_name = getattr(model_args, "model", "physics_unet")
 
     def _as_bool(v):
-        if isinstance(v, bool): return v
-        if isinstance(v, str): return v.lower() == "true"
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == "true"
         return bool(v)
 
     use_aux = _as_bool(getattr(model_args, "use_aux", True))
+    sd = {k.replace("module.", ""): v for k, v in ckpt["model_state_dict"].items()}
+
+    # 对 b11/b12 这类基线，从 checkpoint 的 stem 输入通道自动推断 aux 通道数。
+    stem_w = sd.get("stem.0.conv.weight", None)
+    inferred_aux_channels = None
+    if stem_w is not None and hasattr(stem_w, "shape") and len(stem_w.shape) == 4:
+        in_ch = int(stem_w.shape[1])
+        if model_name == "background_only":
+            inferred_aux_channels = max(0, in_ch - 37)
+        elif model_name == "obs_only":
+            inferred_aux_channels = max(0, in_ch - 18)
+
+    if inferred_aux_channels is not None:
+        use_aux = inferred_aux_channels > 0
 
     if model_name == "fuxi_da":
-        model = create_model(model_name, aux_channels=4 if use_aux else 0)
+        aux_ch = inferred_aux_channels if inferred_aux_channels is not None else (4 if use_aux else 0)
+        model = create_model(model_name, aux_channels=aux_ch)
+    elif model_name in ("background_only", "obs_only"):
+        aux_ch = inferred_aux_channels if inferred_aux_channels is not None else (4 if use_aux else 0)
+        model = create_model(model_name, aux_channels=aux_ch)
     elif model_name in ("vanilla_unet", "fengwu"):
         model = create_model(model_name)
     else:
@@ -360,7 +478,6 @@ def _load_model(ckpt_path, device="cuda"):
         )
         model = create_model(model_name, config=cfg)
 
-    sd = {k.replace("module.", ""): v for k, v in ckpt["model_state_dict"].items()}
     model.load_state_dict(sd, strict=False)
     model = model.to(device).eval()
     return model, model_args, use_aux
@@ -529,7 +646,7 @@ def plot_missing_rate_distribution(test_files: List[Path], out_dir: Path):
     ax.legend()
     plt.tight_layout()
     out_path = out_dir / "fig_missing_rate_dist.png"
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    save_figure(out_path, dpi=200, bbox_inches="tight")
     plt.close()
     print(f"    [OK] 缺测率分布图: {out_path}")
 
@@ -561,20 +678,27 @@ def analyze_se_channels(model, test_files: List[Path], stats: dict, use_aux: boo
     ranking = np.argsort(mean_w)[::-1]
     n_ch = len(mean_w)
 
-    fig, ax = plt.subplots(figsize=(14, 5))
+    fig, ax = plt.subplots(figsize=(12, 4.5))
     x = np.arange(n_ch)
-    ax.bar(x, mean_w[ranking], yerr=std_w[ranking], color='#1976D2', edgecolor='white', capsize=2, alpha=0.85)
+    ax.bar(x, mean_w[ranking], yerr=std_w[ranking],
+           color='#1976D2', edgecolor='white', capsize=1.5, alpha=0.85)
     ax.set_xlabel("Latent Channel (sorted by mean SE weight)", fontsize=12)
     ax.set_ylabel("SE Attention Weight", fontsize=12)
-    ax.set_title("Squeeze-and-Excitation Channel Attention Weights\n(Averaged over test set)", fontsize=13)
+    ax.set_title("Squeeze-and-Excitation Channel Attention Weights\n"
+                 "(Averaged over test set)", fontsize=13)
     ax.set_xticks(x[::4])
     ax.set_xticklabels([f"Ch{ranking[i]+1}" for i in x[::4]], fontsize=8)
-    ax.axhline(1.0/n_ch, color='red', ls='--', lw=1, label=f'Uniform baseline (1/{n_ch})')
-    ax.legend()
+
+    # SE sigmoid 输出的均匀基线应为 0.5，而不是 1/n_ch。
+    uniform_baseline = 0.5
+    ax.axhline(uniform_baseline, color='red', ls='--', lw=1.2,
+               label=f'Uniform baseline ({uniform_baseline})')
+    ax.set_ylim(0, min(1.0, mean_w.max() * 1.3))
+    ax.legend(fontsize=10)
     ax.grid(axis='y', alpha=0.25)
     plt.tight_layout()
     out_path = out_dir / "fig_se_channel_weights.png"
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    save_figure(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     
     np.savez(out_dir / "se_weights_analysis.npz", mean_weights=mean_w, std_weights=std_w, ranking=ranking)
@@ -617,27 +741,44 @@ def evaluate_gap_robustness(experiments: list, test_files: List[Path], stats: di
             del model; torch.cuda.empty_cache()
         except Exception: continue
 
-    if not all_results: return
+    if not all_results:
+        return
 
-    fig, ax = plt.subplots(figsize=(9, 6))
-    type_colors = {"ours": "#D32F2F", "compare": "#1976D2", "ablation": "#F57C00", "vanilla_unet": "#388E3C"}
-    
+    # ---- 绘图 (publication quality) ----
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+
+    type_styles = {
+        "ours": {"color": "#D32F2F", "lw": 2.8, "marker": "o", "ms": 7, "zorder": 10},
+        "ablation": {"color": "#F57C00", "lw": 1.8, "marker": "s", "ms": 5, "zorder": 6},
+        "compare": {"color": "#1E88E5", "lw": 1.5, "marker": "^", "ms": 5, "zorder": 5},
+    }
+
     for eid, res in all_results.items():
+        label = clean_label(res["label"])
+        if label not in CORE_METHODS_FOR_GAP:
+            continue
+
         curve = res["curve"]
-        ratios, rmses = sorted(curve.keys()), [curve[r] for r in sorted(curve.keys())]
-        color = type_colors.get(res["type"], "#7E57C2")
-        lw = 2.8 if res["type"] == "ours" else 1.8
-        ax.plot(ratios, rmses, '-o', label=res["label"], color=color, lw=lw, markersize=6)
+        ratios = sorted(curve.keys())
+        rmses = [curve[r] for r in ratios]
+        style = type_styles.get(
+            res["type"],
+            {"color": "#7E57C2", "lw": 1.2, "marker": "D", "ms": 4, "zorder": 4}
+        )
+        ax.plot(ratios, rmses, ls='-', marker=style["marker"],
+                label=label, color=style["color"],
+                lw=style["lw"], markersize=style["ms"],
+                zorder=style["zorder"], alpha=0.9)
 
     ax.set_xlabel("Artificial Gap Ratio", fontsize=13)
     ax.set_ylabel("RMSE (K)", fontsize=13)
-    ax.set_title("Gap Robustness: RMSE vs. Additional Observation Missing Rate", fontsize=14)
-    ax.set_xlim(-0.05, 1.05)
-    ax.legend(fontsize=10)
+    ax.set_title("Gap Robustness: RMSE vs. Observation Missing Rate", fontsize=14)
+    ax.set_xlim(-0.03, 1.03)
+    ax.legend(fontsize=9, loc="upper left", framealpha=0.9, ncol=1)
     ax.grid(alpha=0.25)
     plt.tight_layout()
     out_path = out_dir / "fig_gap_robustness_comparison.png"
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    save_figure(out_path, dpi=300, bbox_inches="tight")
     plt.close()
 
     with open(out_dir / "gap_robustness_results.json", "w") as f:
@@ -701,7 +842,7 @@ def plot_single_sample_panels(
     fig.suptitle(f"Single Sample Analysis — {Path(test_file).stem}", fontsize=13, y=1.02)
     plt.tight_layout()
     out_path = out_dir / f"fig_5panel_{tag}_{plev}hPa.png"
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    save_figure(out_path, dpi=200, bbox_inches="tight")
     plt.close()
     print(f"    [OK] 五面板图: {out_path}")
 
@@ -766,7 +907,7 @@ def plot_spatial_error_maps(
     fig.suptitle(f"Spatial Error Distribution (averaged over {count} samples)", fontsize=14, y=1.01)
     plt.tight_layout()
     out_path = out_dir / "fig_spatial_error_maps.png"
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    save_figure(out_path, dpi=200, bbox_inches="tight")
     plt.close()
     print(f"    [OK] 空间误差图: {out_path}")
 
@@ -893,7 +1034,7 @@ def _plot_latency_chart(results: dict, out_dir: Path):
 
     plt.tight_layout()
     out_path = out_dir / "fig_latency_throughput.png"
-    plt.savefig(out_path, dpi=260, bbox_inches="tight")
+    save_figure(out_path, dpi=260, bbox_inches="tight")
     plt.close()
     print(f"    [OK] 延迟/吞吐量图: {out_path}")
 
@@ -986,7 +1127,7 @@ def _plot_grouped_bar(table_rows, out_dir: Path):
     ax.grid(axis="y", alpha=0.25)
 
     plt.tight_layout()
-    plt.savefig(out_dir / "fig_grouped_rmse_bar.png", dpi=240, bbox_inches="tight")
+    save_figure(out_dir / "fig_grouped_rmse_bar.png", dpi=240, bbox_inches="tight")
     plt.close()
     print(f"    [OK] 分组柱状图: {out_dir / 'fig_grouped_rmse_bar.png'}")
 
@@ -1130,7 +1271,7 @@ def _plot_forest(test_results, ours_label, out_dir: Path):
     ax.invert_yaxis()
 
     plt.tight_layout()
-    plt.savefig(out_dir / "fig_forest_plot_significance.png", dpi=260, bbox_inches="tight")
+    save_figure(out_dir / "fig_forest_plot_significance.png", dpi=260, bbox_inches="tight")
     plt.close()
 
 
@@ -1231,7 +1372,7 @@ def plot_error_distribution(
 
     plt.tight_layout()
     out_path = out_dir / "fig_error_distribution.png"
-    plt.savefig(out_path, dpi=260, bbox_inches="tight")
+    save_figure(out_path, dpi=260, bbox_inches="tight")
     plt.close()
     print(f"    [OK] 误差分布图: {out_path}")
 
@@ -1351,7 +1492,7 @@ def plot_rmse_bar(rows, out_png: Path):
     if not rows_sorted:
         return
 
-    labels = [r["label"] for r in rows_sorted]
+    labels = [clean_label(r["label"]) for r in rows_sorted]
     rmse = [float(r["rmse"]) for r in rows_sorted]
     types = [r.get("type", "") for r in rows_sorted]
     color_map = {"bkg": "#B0BEC5", "oi": "#43A047", "ours": "#263238",
@@ -1368,7 +1509,7 @@ def plot_rmse_bar(rows, out_png: Path):
     ax.grid(axis="x", alpha=0.25)
     ax.invert_yaxis()
     plt.tight_layout()
-    plt.savefig(out_png, dpi=240, bbox_inches="tight")
+    save_figure(out_png, dpi=240, bbox_inches="tight")
     plt.close()
 
 
@@ -1379,7 +1520,7 @@ def plot_improve_bar(rows, out_png: Path):
     if not rows2:
         return
 
-    labels = [r["label"] for r in rows2]
+    labels = [clean_label(r["label"]) for r in rows2]
     imp = [float(r.get("improve_pct", np.nan)) for r in rows2]
     colors = ["#2E7D32" if v >= 0 else "#C62828" for v in imp]
 
@@ -1395,7 +1536,7 @@ def plot_improve_bar(rows, out_png: Path):
     ax.grid(axis="x", alpha=0.25)
     ax.invert_yaxis()
     plt.tight_layout()
-    plt.savefig(out_png, dpi=240, bbox_inches="tight")
+    save_figure(out_png, dpi=240, bbox_inches="tight")
     plt.close()
 
 
@@ -1405,7 +1546,7 @@ def plot_combined(rows, out_png: Path):
     if not rows_sorted:
         return
 
-    labels = [r["label"] for r in rows_sorted]
+    labels = [clean_label(r["label"]) for r in rows_sorted]
     rmse = [float(r["rmse"]) for r in rows_sorted]
     imp = [float(r.get("improve_pct", np.nan))
            if _is_finite(r.get("improve_pct")) else np.nan for r in rows_sorted]
@@ -1428,9 +1569,8 @@ def plot_combined(rows, out_png: Path):
 
     fig.suptitle("Ablation and Baseline Comparison", fontsize=14)
     plt.tight_layout()
-    plt.savefig(out_png, dpi=260, bbox_inches="tight")
+    save_figure(out_png, dpi=260, bbox_inches="tight")
     plt.close()
-
 
 def plot_rmse_vs_params(rows, out_png: Path):
     valid = [r for r in rows
@@ -1439,20 +1579,86 @@ def plot_rmse_vs_params(rows, out_png: Path):
     if not valid:
         return
 
-    type_colors = {"ours": "#263238", "ablation": "#FB8C00", "compare": "#1E88E5"}
-    fig, ax = plt.subplots(figsize=(9, 6))
+    type_colors = {"ours": "#D32F2F", "ablation": "#FB8C00", "compare": "#1E88E5"}
+    type_markers = {"ours": "*", "ablation": "s", "compare": "o"}
+
+    # 1. 增大画布，给标注和图例留足空间
+    fig, ax = plt.subplots(figsize=(13, 7.5), dpi=120)
+    texts = []
     for r in valid:
-        c = type_colors.get(r.get("type", ""), "#90A4AE")
-        ax.scatter(r["params_m"], r["rmse"], s=120, c=c, edgecolors="white",
-                   zorder=5, alpha=0.9)
-        ax.annotate(r["label"], (r["params_m"], r["rmse"]),
-                    textcoords="offset points", xytext=(6, 6), fontsize=8)
-    ax.set_xlabel("Parameters (Millions)", fontsize=12)
-    ax.set_ylabel("RMSE (K)", fontsize=12)
-    ax.set_title("RMSE vs Model Size (Lower-Left is Better)", fontsize=13)
-    ax.grid(alpha=0.25)
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=260, bbox_inches="tight")
+        t = r.get("type", "")
+        c = type_colors.get(t, "#90A4AE")
+        m = type_markers.get(t, "o")
+        ms = 220 if t == "ours" else 120
+        label = clean_label(r["label"])
+
+        ax.scatter(r["params_m"], r["rmse"], s=ms, c=c, marker=m, edgecolors="white",
+                   zorder=5, alpha=0.95, linewidth=1.2)
+        
+# 2. 初始位置直接放在点上，释放排布自由度
+        x, y = r["params_m"], r["rmse"]
+        
+        # 可选：如果您想顺手处理类似 "(v6) w/o mask-aware (v6)" 的重复问题
+        # 可以增强 clean_label 或在这里做简单的替换
+        # label = label.replace(" (v6)", "") 
+        
+        texts.append(ax.text(
+            x, y, 
+            label,
+            fontsize=7.8,
+            alpha=0.95,
+            zorder=6,
+            ha='center', va='center' # 改为 center，让 adjust_text 决定最终方向
+        ))
+
+    # 3. 强化 adjustText，彻底解决重叠
+    try:
+        from adjustText import adjust_text
+        adjust_text(
+            texts,
+            ax=ax,
+            # 增大文字之间、文字与点之间的排斥力
+            force_text=(0.5, 1.2),    # 增大垂直方向的排斥力 (x, y)
+            force_points=(0.5, 0.8),  # 让文字更用力地躲开数据点
+            expand_points=(1.5, 1.5), # 将数据点的虚拟边界放大，防止文字贴太近
+            expand_text=(1.2, 1.2),   # 将文字的虚拟边界放大
+            arrowprops=dict(arrowstyle='-', color='#78909C', lw=0.8, alpha=0.8), # 使用没有箭头的实线，视觉上更清爽
+            max_iterations=2000       # 增加迭代次数，确保算法有时间把重叠推开
+        )
+    except ImportError:
+        pass
+
+    # 4. 图例外置，完全不挡数据
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='*', color='w', markerfacecolor='#D32F2F',
+               markersize=15, label='Ours', markeredgecolor='white', markeredgewidth=1.2),
+        Line2D([0], [0], marker='s', color='w', markerfacecolor='#FB8C00',
+               markersize=11, label='Ablation', markeredgecolor='white', markeredgewidth=1.2),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='#1E88E5',
+               markersize=11, label='Baseline', markeredgecolor='white', markeredgewidth=1.2),
+    ]
+    ax.legend(
+        handles=legend_elements,
+        fontsize=11,
+        loc='upper right',
+        bbox_to_anchor=(1.28, 1),
+        borderaxespad=0,
+        frameon=True,
+        fancybox=True,
+        shadow=False
+    )
+
+    # 5. 美化坐标轴和网格
+    ax.set_xlabel("Parameters (Millions)", fontsize=14, fontweight='medium', labelpad=10)
+    ax.set_ylabel("RMSE (K)", fontsize=14, fontweight='medium', labelpad=10)
+    ax.set_title("RMSE vs. Model Size (Lower-Left is Better)", fontsize=15, fontweight='medium', pad=15)
+    ax.grid(True, alpha=0.3, linestyle='--', zorder=0)
+    ax.tick_params(axis='both', labelsize=12)
+
+    # 6. 调整布局，适配外置图例
+    plt.subplots_adjust(right=0.82)
+    save_figure(out_png, dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -1461,31 +1667,44 @@ def plot_vertical_rmse(rows, out_png: Path):
     for r in rows:
         p = r.get("per_level_rmse", None)
         if isinstance(p, np.ndarray) and p.shape[0] == len(PRESSURE_LEVELS):
-            profiles.append((r.get("label", ""), r.get("type", ""), p))
+            label = clean_label(r.get("label", ""))
+            profiles.append((label, r.get("type", ""), p))
     if not profiles:
         return
 
-    type_colors = {"bkg": "#7f8c8d", "oi": "#43A047", "ours": "#111111",
-                   "ablation": "#F57C00", "compare": "#1E88E5"}
-    fig, ax = plt.subplots(figsize=(8.2, 9.2))
-    for label, mtype, prof in profiles:
-        lw = 2.8 if mtype == "ours" else 1.8
-        alpha = 0.95 if mtype == "ours" else 0.8
-        color = type_colors.get(mtype, "#90A4AE")
-        ax.plot(prof, PRESSURE_LEVELS, lw=lw, alpha=alpha, color=color, label=label)
+    profiles_core = [p for p in profiles if p[0] in CORE_METHODS_FOR_VERTICAL]
+    if len(profiles_core) < 3:
+        profiles_core = profiles
+
+    type_styles = {
+        "bkg": {"color": "#9E9E9E", "lw": 2.0, "ls": "--"},
+        "oi": {"color": "#43A047", "lw": 1.8, "ls": "-."},
+        "ours": {"color": "#000000", "lw": 3.0, "ls": "-"},
+        "ablation": {"color": "#F57C00", "lw": 1.6, "ls": "-"},
+        "compare": {"color": "#1E88E5", "lw": 1.6, "ls": "-"},
+    }
+    fig, ax = plt.subplots(figsize=(7, 9))
+    for label, mtype, prof in profiles_core:
+        style = type_styles.get(mtype, {"color": "#90A4AE", "lw": 1.4, "ls": "-"})
+        ax.plot(prof, PRESSURE_LEVELS,
+                lw=style["lw"], ls=style["ls"], color=style["color"],
+                label=label, alpha=0.9,
+                zorder=10 if mtype == "ours" else 5)
 
     ax.set_yscale("log")
     ax.invert_yaxis()
-    ax.set_yticks([10, 50, 100, 200, 500, 1000])
-    ax.set_yticklabels(["10", "50", "100", "200", "500", "1000"])
-    ax.set_xlabel("RMSE (K)")
-    ax.set_ylabel("Pressure (hPa)")
-    ax.set_title("Vertical RMSE Comparison")
-    ax.grid(alpha=0.25)
-    ax.legend(fontsize=8, loc="center left", bbox_to_anchor=(1.02, 0.5))
+    ax.set_yticks([1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 700, 1000])
+    ax.set_yticklabels(["1", "2", "5", "10", "20", "50", "100",
+                        "200", "300", "500", "700", "1000"], fontsize=10)
+    ax.set_xlabel("RMSE (K)", fontsize=13)
+    ax.set_ylabel("Pressure (hPa)", fontsize=13)
+    ax.set_title("Vertical RMSE Profile Comparison", fontsize=14)
+    ax.grid(alpha=0.3, which='both')
+    ax.legend(fontsize=10, loc="upper right", framealpha=0.9, edgecolor='gray')
     plt.tight_layout()
-    plt.savefig(out_png, dpi=260, bbox_inches="tight")
+    save_figure(out_png, dpi=300, bbox_inches="tight")
     plt.close()
+    print(f"    [OK] 垂直RMSE图 (核心方法): {out_png}")
 
 
 def plot_loss_curves(rows, out_png: Path):
@@ -1528,8 +1747,9 @@ def plot_loss_curves(rows, out_png: Path):
         train_loss = train_loss[last_start_idx:]
         val_loss = val_loss[last_start_idx:]
 
-        axes[0].plot(epochs, train_loss, label=r['label'], color=colors[idx], lw=1.5)
-        axes[1].plot(epochs, val_loss, label=r['label'], color=colors[idx], lw=1.5)
+        clean_lbl = clean_label(r['label'])
+        axes[0].plot(epochs, train_loss, label=clean_lbl, color=colors[idx], lw=1.5)
+        axes[1].plot(epochs, val_loss, label=clean_lbl, color=colors[idx], lw=1.5)
         plotted = True
 
     if not plotted:
@@ -1545,7 +1765,7 @@ def plot_loss_curves(rows, out_png: Path):
     axes[1].grid(True, alpha=0.3)
     axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
     plt.tight_layout()
-    plt.savefig(out_png, dpi=260, bbox_inches="tight")
+    save_figure(out_png, dpi=260, bbox_inches="tight")
     plt.close()
 
 
@@ -1556,7 +1776,7 @@ def plot_resources(rows, out_png: Path):
     if not res_rows:
         return
 
-    labels = [r["label"] for r in res_rows]
+    labels = [clean_label(r["label"]) for r in res_rows]
     params = [r["params_m"] for r in res_rows]
     gflops = [r.get("gflops_inf", 0) for r in res_rows]
     mem_train = [r.get("mem_train_mb", 0) for r in res_rows]
@@ -1599,7 +1819,7 @@ def plot_resources(rows, out_png: Path):
 
     fig.suptitle("Model Resources and Computation Overhead", fontsize=14)
     plt.tight_layout()
-    plt.savefig(out_png, dpi=260, bbox_inches="tight")
+    save_figure(out_png, dpi=260, bbox_inches="tight")
     plt.close()
 
 

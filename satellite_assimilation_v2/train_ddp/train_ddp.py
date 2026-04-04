@@ -43,7 +43,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
 from torch.utils.data.distributed import DistributedSampler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
@@ -128,6 +128,83 @@ def reduce_tensor(tensor: torch.Tensor, world_size: int) -> torch.Tensor:
     return rt
 
 
+def _normalize_split_paths(paths: List[str], data_root: Path) -> List[str]:
+    out = []
+    for p in paths:
+        pp = Path(p)
+        if not pp.is_absolute():
+            pp = data_root / pp
+        out.append(str(pp.resolve()))
+    return out
+
+
+def build_or_load_split(
+    file_list: List[str],
+    data_root: Path,
+    args: argparse.Namespace,
+    rank: int,
+) -> Tuple[Dict[str, List[str]], Path]:
+    """构建或加载 train/val/test 划分，支持可复现保存。"""
+    all_files = sorted([str(Path(f).resolve()) for f in file_list])
+    split_path = Path(args.split_file).expanduser() if args.split_file else (data_root / 'dataset_split.json')
+
+    loaded = False
+    split: Dict[str, List[str]] = {}
+    if args.split_file and split_path.exists():
+        with open(split_path, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        split = {
+            'train': _normalize_split_paths(raw.get('train', []), data_root),
+            'val': _normalize_split_paths(raw.get('val', []), data_root),
+            'test': _normalize_split_paths(raw.get('test', []), data_root),
+        }
+        loaded = True
+        print_rank0(f"  ✓ 加载划分文件: {split_path}", rank)
+    elif args.split_mode == 'file' and split_path.exists():
+        with open(split_path, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        split = {
+            'train': _normalize_split_paths(raw.get('train', []), data_root),
+            'val': _normalize_split_paths(raw.get('val', []), data_root),
+            'test': _normalize_split_paths(raw.get('test', []), data_root),
+        }
+        loaded = True
+        print_rank0(f"  ✓ 加载划分文件: {split_path}", rank)
+    elif args.split_mode == 'file':
+        raise FileNotFoundError(f"split_mode=file 但未找到 split_file: {split_path}")
+
+    if not loaded:
+        rng = random.Random(args.seed)
+        shuffled = all_files.copy()
+        rng.shuffle(shuffled)
+
+        n_total = len(shuffled)
+        n_train = int(n_total * args.train_ratio)
+        n_val = int(n_total * args.val_ratio)
+        n_test = n_total - n_train - n_val
+
+        split = {
+            'train': shuffled[:n_train],
+            'val': shuffled[n_train:n_train + n_val],
+            'test': shuffled[n_train + n_val:n_train + n_val + n_test],
+        }
+
+        if args.save_split and is_main_process(rank):
+            split_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(split_path, 'w', encoding='utf-8') as f:
+                json.dump(split, f, indent=2, ensure_ascii=False)
+            print(f"  ✓ 保存划分文件: {split_path}")
+
+    universe = set(all_files)
+    for key in ('train', 'val', 'test'):
+        split[key] = [p for p in split[key] if p in universe]
+
+    if not split['train'] or not split['val']:
+        raise ValueError('数据划分无效: train/val 不能为空')
+
+    return split, split_path
+
+
 # =============================================================================
 # Part 2: 参数解析
 # =============================================================================
@@ -162,13 +239,22 @@ def parse_args() -> argparse.Namespace:
                             help='验证集比例')
     data_group.add_argument('--num_workers', type=int, default=4,
                             help='DataLoader工作进程数')
+    data_group.add_argument('--split_mode', type=str, default='random',
+                            choices=['random', 'file'],
+                            help='数据集划分方式: random 或 file')
+    data_group.add_argument('--split_file', type=str, default='',
+                            help='划分文件路径 (JSON, 含 train/val/test 列表)')
+    data_group.add_argument('--save_split', type=str, default='true',
+                            choices=['true', 'false'],
+                            help='random 划分时是否保存 split JSON')
     
     # === 模型配置 ===
     model_group = parser.add_argument_group('模型配置')
     model_group.add_argument('--model', type=str, default='physics_unet',
                              choices=['physics_unet', 'physics_unet_lite',
                                      'physics_unet_large', 'vanilla_unet', 'fuxi_da',
-                                     'attn_unet', 'pixel_mlp', 'res_unet', 'fengwu','mamba'],
+                         'attn_unet', 'pixel_mlp', 'res_unet', 'fengwu', 'mamba',
+                         'pasnet', 'background_only', 'obs_only'],
                              help='模型类型')
     model_group.add_argument('--fusion_mode', type=str, default='gated',
                              choices=['concat', 'add', 'gated'],
@@ -214,6 +300,8 @@ def parse_args() -> argparse.Namespace:
                             help='梯度损失权重 (仅combined模式)')
     loss_group.add_argument('--deep_loss_weight', type=float, default=0.3,
                             help='深度监督损失权重')
+    loss_group.add_argument('--vert_loss_weight', type=float, default=0.05,
+                            help='垂直一致性损失权重 (相邻层温差约束)')
     loss_group.add_argument('--use_increment', default=False, action='store_true',
                             help='训练增量目标 (Δ=target-bkg) 而非绝对温度')
     loss_group.add_argument('--increment_stats', type=str, default='',
@@ -254,6 +342,7 @@ def parse_args() -> argparse.Namespace:
     args.tensorboard = args.tensorboard.lower() == 'true'
     args.sync_bn = args.sync_bn.lower() == 'true'
     args.find_unused_parameters = args.find_unused_parameters.lower() == 'true'
+    args.save_split = args.save_split.lower() == 'true'
 
     if args.grad_accum_steps < 1:
         raise ValueError('--grad_accum_steps 必须 >= 1')
@@ -355,12 +444,14 @@ class CombinedLoss(nn.Module):
         self,
         grad_weight: float = 0.1,
         deep_weight: float = 0.3,
+        vert_weight: float = 0.05,
         base_loss: str = 'mse'
     ):
         super().__init__()
         
         self.grad_weight = grad_weight
         self.deep_weight = deep_weight
+        self.vert_weight = vert_weight
         
         if base_loss == 'mse':
             self.base_loss = nn.MSELoss()
@@ -407,10 +498,10 @@ class CombinedLoss(nn.Module):
                 deep = deep + self.base_loss(dp, target)
             deep = deep / len(deep_preds)
 
-        total = (base 
-                + self.grad_weight * grad 
-                + self.deep_weight * deep
-                + 0.05 * vert)  # λ_vert = 0.05
+        total = (base
+            + self.grad_weight * grad
+            + self.deep_weight * deep
+            + self.vert_weight * vert)
         
         return total, {
             'total': total.item(),
@@ -510,6 +601,7 @@ class DDPTrainer:
         total_loss = 0
         valid_batches = 0
         loss_components = {'base': 0, 'grad': 0, 'deep': 0}
+        loss_components['vert'] = 0
         n_batches = len(self.train_loader)
         accum_steps = max(1, self.args.grad_accum_steps)
         nan_count = 0
@@ -625,9 +717,20 @@ class DDPTrainer:
         """验证 (所有进程参与，结果同步)"""
         self.model.eval()
         
-        total_loss = 0
-        all_preds = []
-        all_targets = []
+        total_loss = 0.0
+        n_loss_batches = 0.0
+        sum_sq = 0.0
+        n_elem = 0.0
+        sum_sq_strat = 0.0
+        n_elem_strat = 0.0
+        sum_sq_trop = 0.0
+        n_elem_trop = 0.0
+        grad_rmse_sum = 0.0
+        grad_corr_sum = 0.0
+        n_grad = 0.0
+
+        strat_idx = torch.as_tensor(self.metrics.strat_mask, device=self.device, dtype=torch.bool)
+        trop_idx = torch.as_tensor(self.metrics.trop_mask, device=self.device, dtype=torch.bool)
         
         for batch in self.val_loader:
             obs = batch['obs'].to(self.device, non_blocking=True)
@@ -648,45 +751,63 @@ class DDPTrainer:
                 pred = output
             
             loss, _ = self.criterion(pred, target, None)
-            total_loss += loss.item()
-            
-            all_preds.append(pred.cpu())
-            all_targets.append(target.cpu())
-        
-        # 合并
-        all_preds = torch.cat(all_preds, dim=0)
-        all_targets = torch.cat(all_targets, dim=0)
-        
-        # 计算指标
-        avg_loss = total_loss / len(self.val_loader)
-        levelwise = self.metrics.levelwise_rmse(all_preds, all_targets)
-        grad_metrics = self.metrics.gradient_loss(all_preds, all_targets)
-        
-        # 跨进程同步
+            total_loss += float(loss.item())
+            n_loss_batches += 1.0
+
+            diff = pred - target
+            sum_sq += float((diff ** 2).sum().item())
+            n_elem += float(diff.numel())
+
+            if strat_idx.any():
+                diff_strat = diff[:, strat_idx, :, :]
+                sum_sq_strat += float((diff_strat ** 2).sum().item())
+                n_elem_strat += float(diff_strat.numel())
+
+            if trop_idx.any():
+                diff_trop = diff[:, trop_idx, :, :]
+                sum_sq_trop += float((diff_trop ** 2).sum().item())
+                n_elem_trop += float(diff_trop.numel())
+
+            grad_metrics = self.metrics.gradient_loss(pred, target)
+            batch_size = float(pred.shape[0])
+            grad_rmse_sum += float(grad_metrics['grad_rmse'].item()) * batch_size
+            grad_corr_sum += float(grad_metrics['grad_correlation'].item()) * batch_size
+            n_grad += batch_size
+
         if self.world_size > 1:
             metrics_tensor = torch.tensor([
-                avg_loss,
-                levelwise['global'].item(),
-                levelwise['stratosphere'].item(),
-                levelwise['troposphere'].item(),
-                grad_metrics['grad_rmse'].item(),
-                grad_metrics['grad_correlation'].item()
-            ], device=self.device)
-            
-            metrics_tensor = reduce_tensor(metrics_tensor, self.world_size)
-            
-            avg_loss = metrics_tensor[0].item()
-            global_rmse = metrics_tensor[1].item()
-            strat_rmse = metrics_tensor[2].item()
-            trop_rmse = metrics_tensor[3].item()
-            grad_rmse = metrics_tensor[4].item()
-            grad_corr = metrics_tensor[5].item()
-        else:
-            global_rmse = levelwise['global'].item()
-            strat_rmse = levelwise['stratosphere'].item()
-            trop_rmse = levelwise['troposphere'].item()
-            grad_rmse = grad_metrics['grad_rmse'].item()
-            grad_corr = grad_metrics['grad_correlation'].item()
+                total_loss,
+                n_loss_batches,
+                sum_sq,
+                n_elem,
+                sum_sq_strat,
+                n_elem_strat,
+                sum_sq_trop,
+                n_elem_trop,
+                grad_rmse_sum,
+                grad_corr_sum,
+                n_grad,
+            ], device=self.device, dtype=torch.float64)
+            dist.all_reduce(metrics_tensor, op=dist.ReduceOp.SUM)
+
+            total_loss = float(metrics_tensor[0].item())
+            n_loss_batches = float(metrics_tensor[1].item())
+            sum_sq = float(metrics_tensor[2].item())
+            n_elem = float(metrics_tensor[3].item())
+            sum_sq_strat = float(metrics_tensor[4].item())
+            n_elem_strat = float(metrics_tensor[5].item())
+            sum_sq_trop = float(metrics_tensor[6].item())
+            n_elem_trop = float(metrics_tensor[7].item())
+            grad_rmse_sum = float(metrics_tensor[8].item())
+            grad_corr_sum = float(metrics_tensor[9].item())
+            n_grad = float(metrics_tensor[10].item())
+
+        avg_loss = total_loss / max(n_loss_batches, 1.0)
+        global_rmse = float(np.sqrt(sum_sq / max(n_elem, 1.0)))
+        strat_rmse = float(np.sqrt(sum_sq_strat / max(n_elem_strat, 1.0))) if n_elem_strat > 0 else float('nan')
+        trop_rmse = float(np.sqrt(sum_sq_trop / max(n_elem_trop, 1.0))) if n_elem_trop > 0 else float('nan')
+        grad_rmse = grad_rmse_sum / max(n_grad, 1.0)
+        grad_corr = grad_corr_sum / max(n_grad, 1.0)
         
         return {
             'loss': avg_loss,
@@ -717,7 +838,7 @@ class DDPTrainer:
             self._csv_file = open(self._csv_path, "a", newline="")
             self._csv_writer = _csv.writer(self._csv_file)
             if _write_header:
-                self._csv_writer.writerow(["epoch","train_loss","val_loss","global_rmse","lr"])
+                self._csv_writer.writerow(["epoch","train_loss","val_loss","global_rmse","vert_loss","lr"])
 
         for epoch in range(start_epoch, self.args.epochs):
             if is_main_process(self.rank):
@@ -763,6 +884,7 @@ class DDPTrainer:
                             f"{train_metrics['loss']:.6f}",
                             f"{val_metrics['loss']:.6f}",
                             f"{val_metrics['global_rmse']:.4f}",
+                            f"{train_metrics.get('vert', 0.0):.6f}",
                             f"{_lr:.2e}",
                         ])
                         self._csv_file.flush()
@@ -840,6 +962,21 @@ def main():
             aux_data=aux if args.use_aux else None,
             compute_stats=True
         )
+
+        n_total = len(dataset)
+        n_train = int(n_total * args.train_ratio)
+        n_val = int(n_total * args.val_ratio)
+        n_test = n_total - n_train - n_val
+
+        g = torch.Generator().manual_seed(args.seed)
+        perm = torch.randperm(n_total, generator=g).tolist()
+        train_idx = perm[:n_train]
+        val_idx = perm[n_train:n_train + n_val]
+        test_idx = perm[n_train + n_val:n_train + n_val + n_test]
+
+        train_set = Subset(dataset, train_idx)
+        val_set = Subset(dataset, val_idx)
+        test_set = Subset(dataset, test_idx)
     else:
         _all_files = sorted(f for f in data_root.glob('**/*.npz')
                             if f.name not in ('stats.npz', 'dataset_split.json', 'increment_stats.npz'))
@@ -859,40 +996,50 @@ def main():
             except Exception:
                 n_corrupt += 1
         print_rank0(f"  有效文件: {len(file_list)}, 损坏文件: {n_corrupt}", rank)
-        
-        dataset = LazySatelliteERA5Dataset(
-            file_list=file_list,
-            use_aux=args.use_aux
-        )
-        
-        if args.stats_file and Path(args.stats_file).exists():
-            stats = np.load(args.stats_file)
-            dataset.obs_normalizer = LevelwiseNormalizer(
-                stats['obs_mean'], stats['obs_std'], name='obs'
-            )
-            dataset.bkg_normalizer = LevelwiseNormalizer(
-                stats['bkg_mean'], stats['bkg_std'], name='bkg'
-            )
-            dataset.target_normalizer = LevelwiseNormalizer(
-                stats['target_mean'], stats['target_std'], name='target'
-            )
+
+        split_dict, split_path = build_or_load_split(file_list, data_root, args, rank)
+        train_files = split_dict['train']
+        val_files = split_dict['val']
+        test_files = split_dict['test']
+        print_rank0(f"  划分文件: {split_path}", rank)
+        print_rank0(f"  train/val/test = {len(train_files)}/{len(val_files)}/{len(test_files)}", rank)
+
+        stats_path = Path(args.stats_file) if args.stats_file else None
+        if stats_path is not None and stats_path.exists():
+            print_rank0(f"  ✓ 加载统计量: {stats_path}", rank)
         else:
-            # 仅在主进程计算统计量
+            # 只用 train 子集计算统计量，避免泄漏。
+            stats_path = Path(args.output_dir) / args.exp_name / 'train_stats.npz'
             if is_main_process(rank):
-                dataset.compute_statistics(n_samples=min(1000, len(dataset)))
+                stats_path.parent.mkdir(parents=True, exist_ok=True)
+                stats_ds = LazySatelliteERA5Dataset(file_list=train_files, use_aux=args.use_aux)
+                stats_ds.compute_statistics(save_path=str(stats_path))
+                print(f"  ✓ 训练统计量已保存: {stats_path}")
             if world_size > 1:
                 dist.barrier()
-    
-    # 划分数据集
-    n_total = len(dataset)
-    n_train = int(n_total * args.train_ratio)
-    n_val = int(n_total * args.val_ratio)
-    n_test = n_total - n_train - n_val
-    
-    train_set, val_set, test_set = random_split(
-        dataset, [n_train, n_val, n_test],
-        generator=torch.Generator().manual_seed(args.seed)
-    )
+
+        stats = np.load(stats_path)
+        obs_norm = LevelwiseNormalizer(stats['obs_mean'], stats['obs_std'], name='obs')
+        bkg_norm = LevelwiseNormalizer(stats['bkg_mean'], stats['bkg_std'], name='bkg')
+        tgt_norm = LevelwiseNormalizer(stats['target_mean'], stats['target_std'], name='target')
+
+        all_files_sorted = sorted(file_list)
+        dataset = LazySatelliteERA5Dataset(
+            file_list=all_files_sorted,
+            obs_normalizer=obs_norm,
+            bkg_normalizer=bkg_norm,
+            target_normalizer=tgt_norm,
+            use_aux=args.use_aux
+        )
+
+        index_map = {str(Path(f).resolve()): i for i, f in enumerate(all_files_sorted)}
+        train_idx = [index_map[f] for f in train_files if f in index_map]
+        val_idx = [index_map[f] for f in val_files if f in index_map]
+        test_idx = [index_map[f] for f in test_files if f in index_map]
+
+        train_set = Subset(dataset, train_idx)
+        val_set = Subset(dataset, val_idx)
+        test_set = Subset(dataset, test_idx)
     
     print_rank0(f"  训练集: {len(train_set)}", rank)
     print_rank0(f"  验证集: {len(val_set)}", rank)
@@ -950,7 +1097,7 @@ def main():
         from backbone import create_model, UNetConfig
     
     # 模型配置
-    if args.model not in ('vanilla_unet', 'fuxi_da', 'fengwu'):
+    if args.model in ('physics_unet', 'pasnet', 'physics_unet_lite', 'physics_unet_large'):
         config = UNetConfig(
             fusion_mode=args.fusion_mode,
             use_aux=args.use_aux,
@@ -959,7 +1106,7 @@ def main():
             deep_supervision=args.deep_supervision
         )
         model = create_model(args.model, config=config)
-    elif args.model in ('fuxi_da', 'fengwu'):
+    elif args.model in ('fuxi_da', 'fengwu', 'background_only', 'obs_only'):
         # FuXi-DA uses aux_channels to size its first fusion conv. Keep it
         # consistent with runtime aux usage to avoid channel mismatch.
         model = create_model(args.model, aux_channels=4 if args.use_aux else 0)
@@ -1021,7 +1168,8 @@ def main():
     if args.loss == 'combined':
         criterion = CombinedLoss(
             grad_weight=args.grad_loss_weight,
-            deep_weight=args.deep_loss_weight
+            deep_weight=args.deep_loss_weight,
+            vert_weight=args.vert_loss_weight,
         )
     else:
         base_criterion = {
@@ -1037,8 +1185,8 @@ def main():
             
             def forward(self, pred, target, deep_preds=None):
                 loss = self.loss_fn(pred, target)
-                return loss, {'total': loss.item(), 'base': loss.item(), 
-                             'grad': 0, 'deep': 0}
+                return loss, {'total': loss.item(), 'base': loss.item(),
+                             'grad': 0, 'deep': 0, 'vert': 0}
         
         criterion = SimpleLoss(base_criterion)
     

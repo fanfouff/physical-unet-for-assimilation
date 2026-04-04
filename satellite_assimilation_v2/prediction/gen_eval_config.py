@@ -5,9 +5,9 @@ gen_eval_config.py — 自动扫描实验输出目录，生成评估所需的 YA
 用法:
   python3 gen_eval_config.py \
     --exp_root /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128 \
-    --test_root /data2/lrx/npz_64_real/test \
-    --stats_file /data2/lrx/npz_64_real/stats.npz \
-    --increment_stats /data2/lrx/npz_64_real/increment_stats.npz \
+    --test_root /data1/lrx/npz_128_real/test \
+    --stats_file /data1/lrx/npz_128_real/stats.npz \
+    --increment_stats /data1/lrx/npz_128_real/increment_stats.npz \
     --output_yaml eval_config_neurocomputing.yaml
 
 也可以指定多个 --exp_root 来扫描多个目录。
@@ -235,27 +235,27 @@ def main():
     )
     p.add_argument(
         "--test_root",
-        default="/data2/lrx/npz_64_real/test",
+        default="/data1/lrx/npz_64_real/test",
         help="测试集 npz 根目录"
     )
     p.add_argument(
         "--stats_file",
-        default="/data2/lrx/npz_64_real/stats.npz",
+        default="/data1/lrx/npz_64_real/stats.npz",
         help="归一化统计文件"
     )
     p.add_argument(
         "--increment_stats",
-        default="/data2/lrx/npz_64_real/increment_stats.npz",
+        default="/data1/lrx/npz_64_real/increment_stats.npz",
         help="增量统计文件"
     )
     p.add_argument(
         "--output_dir",
-        default="./figures_neurocomputing_eval", # [修改处] 与自动化脚本保持一致
+        default="./figures_neurocomputing_eval", # 独立运行 gen 脚本时的默认输出目录
         help="评估结果输出目录"
     )
     p.add_argument(
         "--output_yaml",
-        default="eval_config_neurocomputing.yaml", # [修改处] 默认输出名更清晰
+        default="eval_config_neurocomputing.yaml", # 独立运行 gen 脚本时的默认 YAML 名
         help="输出的 YAML 文件路径"
     )
     p.add_argument("--device", default="cuda")

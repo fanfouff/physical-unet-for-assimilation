@@ -2,152 +2,151 @@
 # eval_all_experiments.py 配置文件
 # 自动生成 by gen_eval_config.py
 # 目标期刊: Neurocomputing
-# 实验数: 16
+# 实验数: 15
 # ====================================================
 
-test_root: /data2/lrx/npz_64_real/test
-stats_file: /data2/lrx/npz_64_real/stats.npz
-increment_stats: /data2/lrx/npz_64_real/increment_stats.npz
-output_dir: /home/lrx/Unet/satellite_assimilation_v2/prediction/figures_eval_menu_20260322_112031
+test_root: /data1/lrx/npz_64_real/test
+stats_file: /data1/lrx/npz_64_real/stats.npz
+increment_stats: /data1/lrx/npz_64_real/increment_stats.npz
+output_dir: ./figures_neurocomputing_eval
 device: cuda
 skip_missing: false
 oi_results_dir: null
+var3d_results_dir: null
+var4d_results_dir: null
 experiments:
-- id: ours_noaux_full_64
-  label: Ours-ours_noaux_full_64
+- id: ours_with_loss
+  label: Ours-ours_with_loss
   type: ours
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_noaux_full_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_noaux_full_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_with_loss/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_with_loss/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: false
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_noaux_full_64/train_history.csv
-- id: ours_noaux_v1
-  label: Ours-ours_noaux_v1
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_with_loss/train_history.csv
+- id: ours_with_ploss
+  label: Ours-ours_with_ploss
   type: ours
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_noaux_v1/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_noaux_v1/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_with_ploss/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_with_ploss/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: false
-- id: ours_with_mamba
-  label: Ours-ours_with_mamba
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_with_ploss/train_history.csv
+- id: v1
+  label: Ours (V1)
   type: ours
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_with_mamba/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_with_mamba/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_noaux_full_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_noaux_full_128/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: false
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_with_mamba/train_history.csv
-- id: ours_with_vert_constraint
-  label: Ours-ours_with_vert_constraint
-  type: ours
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_with_vert_constraint/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_with_vert_constraint/config.json
-  model_name: physics_unet
-  loss_type: ''
-  use_aux: false
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/ours_with_vert_constraint/train_history.csv
-- id: v2_noaux_no_deep_supervision_64
-  label: Ablation-v2_noaux_no_deep_supervision_64
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/ours_noaux_full_128/train_history.csv
+- id: v1_noaux_mse_128
+  label: Ablation-v1_noaux_mse_128
   type: ablation
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v2_noaux_no_deep_supervision_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v2_noaux_no_deep_supervision_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v1_noaux_mse_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v1_noaux_mse_128/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: false
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v2_noaux_no_deep_supervision_64/train_history.csv
-- id: v3_fusion_add_no_deepsupervision_64
-  label: Ablation-v3_fusion_add_no_deepsupervision_64
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v1_noaux_mse_128/train_history.csv
+- id: v2
+  label: w/o DeepSupervision (V2)
   type: ablation
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v3_fusion_add_no_deepsupervision_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v3_fusion_add_no_deepsupervision_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v2_noaux_no_deep_supervision_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v2_noaux_no_deep_supervision_128/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: false
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v3_fusion_add_no_deepsupervision_64/train_history.csv
-- id: v4_noaux_spectral_stem_64
-  label: Ablation-v4_noaux_spectral_stem_64
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v2_noaux_no_deep_supervision_128/train_history.csv
+- id: v3
+  label: w/o GatedFusion (V3)
   type: ablation
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v4_noaux_spectral_stem_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v4_noaux_spectral_stem_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v3_fusion_add_no_deepsupervision128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v3_fusion_add_no_deepsupervision128/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: false
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v4_noaux_spectral_stem_64/train_history.csv
-- id: v5_noaux_no_mask_aware_64
-  label: Ablation-v5_noaux_no_mask_aware_64
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v3_fusion_add_no_deepsupervision128/train_history.csv
+- id: v4
+  label: w/o SpectralStem (V4)
   type: ablation
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v5_noaux_no_mask_aware_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v5_noaux_no_mask_aware_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v4_noaux_spectral_stem_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v4_noaux_spectral_stem_128/config.json
+  model_name: physics_unet
+  loss_type: ''
+  use_aux: false
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v4_noaux_spectral_stem_128/train_history.csv
+- id: v5
+  label: w/o MaskAware-MSE (V5)
+  type: ablation
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v5_noaux_no_mask_aware_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v5_noaux_no_mask_aware_128/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: true
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v5_noaux_no_mask_aware_64/train_history.csv
-- id: v6_noaux_no_mask_aware_64
-  label: Ablation-v6_noaux_no_mask_aware_64
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v5_noaux_no_mask_aware_128/train_history.csv
+- id: v6
+  label: w/o MaskAware-Combined (V6)
   type: ablation
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v6_noaux_no_mask_aware_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/v6_noaux_no_mask_aware_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v6_noaux_no_mask_aware_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v6_noaux_no_mask_aware_128/config.json
   model_name: physics_unet
   loss_type: ''
   use_aux: true
-- id: compare_b3_vanilla_unet_64
-  label: Baseline-compare_b3_vanilla_unet_64
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/v6_noaux_no_mask_aware_128/train_history.csv
+- id: b3
+  label: VanillaUNet (B3)
   type: compare
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b3_vanilla_unet_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b3_vanilla_unet_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b3_vanilla_unet_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b3_vanilla_unet_128/config.json
   model_name: vanilla_unet
   loss_type: ''
-  use_aux: true
-- id: compare_b4_fuxi_da_64
-  label: Baseline-compare_b4_fuxi_da_64
-  type: compare
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b4_fuxi_da_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b4_fuxi_da_64/config.json
-  model_name: fuxi_da
-  loss_type: ''
   use_aux: false
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b4_fuxi_da_64/train_history.csv
-- id: compare_b4_fuxi_da_64_tttf
-  label: Baseline-compare_b4_fuxi_da_64_tttf
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b3_vanilla_unet_128/train_history.csv
+- id: b4
+  label: FuXi-DA (B4)
   type: compare
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b4_fuxi_da_64_tttf/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b4_fuxi_da_64_tttf/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b4_fuxi_da_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b4_fuxi_da_128/config.json
   model_name: fuxi_da
   loss_type: ''
   use_aux: true
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b4_fuxi_da_64_tttf/train_history.csv
-- id: compare_b5_attn_unet_64
-  label: Baseline-compare_b5_attn_unet_64
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b4_fuxi_da_128/train_history.csv
+- id: b5
+  label: AttentionUNet (B5)
   type: compare
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b5_attn_unet_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b5_attn_unet_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b5_attn_unet_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b5_attn_unet_128/config.json
   model_name: attn_unet
   loss_type: ''
-  use_aux: true
-- id: compare_b6_pixel_mlp_64
-  label: Baseline-compare_b6_pixel_mlp_64
+  use_aux: false
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b5_attn_unet_128/train_history.csv
+- id: b6
+  label: PixelMLP (B6)
   type: compare
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b6_pixel_mlp_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b6_pixel_mlp_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b6_pixel_mlp_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b6_pixel_mlp_128/config.json
   model_name: pixel_mlp
   loss_type: ''
-  use_aux: true
-- id: compare_b7_res_unet_64
-  label: Baseline-compare_b7_res_unet_64
+  use_aux: false
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b6_pixel_mlp_128/train_history.csv
+- id: b7
+  label: ResUNet (B7)
   type: compare
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b7_res_unet_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b7_res_unet_64/config.json
-  model_name: res_unet
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b7_res_unet_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b7_res_unet_128/config.json
+  model_name: vanilla_unet
   loss_type: ''
-  use_aux: true
-- id: compare_b9_fengwu_64
-  label: Baseline-compare_b9_fengwu_64
+  use_aux: false
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b7_res_unet_128/train_history.csv
+- id: compare_b9_fengwu_128
+  label: Baseline-compare_b9_fengwu_128
   type: compare
-  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b9_fengwu_64/best_model.pth
-  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b9_fengwu_64/config.json
+  ckpt: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b9_fengwu_128/best_model.pth
+  config_json: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b9_fengwu_128/config.json
   model_name: fengwu
   loss_type: ''
   use_aux: true
-  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64/compare_b9_fengwu_64/train_history.csv
+  train_history: /home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128/compare_b9_fengwu_128/train_history.csv

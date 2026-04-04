@@ -1,9 +1,9 @@
 """
 ===============================================================================
-物理感知U-Net骨干网络 (Physics-Aware U-Net Backbone)
+卫星-背景融合骨干网络集合 (Satellite-Background Fusion Backbones)
 ===============================================================================
 
-完整的端到端卫星数据同化模型架构
+用于离线状态订正任务的多种骨干实现
 
 结构:
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -359,13 +359,13 @@ class CBAM(nn.Module):
 
 class PhysicsAwareUNet(nn.Module):
     """
-    物理感知U-Net - 完整的端到端卫星数据同化模型
-    
-    创新点:
-    1. SpectralAdapterStem: 物理感知的多源数据融合入口
-    2. Mask-Aware Processing: 显式处理观测缺失
-    3. Multi-scale Skip Connections: 保留多尺度特征
-    4. Deep Supervision (可选): 加速收敛
+    physics_unet / PASNet 主干。
+
+    设计要点:
+    1. SpectralAdapterStemV2 进行卫星-背景融合
+    2. Mask-aware 路径显式利用缺测信息
+    3. 多尺度 skip connection
+    4. 可选深度监督
     """
     
     def __init__(self, config: Optional[UNetConfig] = None):
@@ -474,6 +474,7 @@ class PhysicsAwareUNet(nn.Module):
         
         print(f"\n{'='*70}")
         print(f"PhysicsAwareUNet 模型信息")
+        print(f"  Model ID: physics_unet / pasnet")
         print(f"{'='*70}")
         print(f"  Stem通道: {self.config.stem_channels}")
         print(f"  Encoder通道: {self.config.encoder_channels}")
@@ -505,7 +506,7 @@ class PhysicsAwareUNet(nn.Module):
             pred: 预测场 [B, 37, H, W]
             deep_outputs: 深度监督输出列表 (如果启用)
         """
-        # 1. Stem: 物理感知融合
+        # 1. Stem: 卫星-背景融合
         x = self.stem(obs, bkg, mask, aux)  # [B, 64, H, W]
         
         # 2. Encoder: 存储skip connections
@@ -904,10 +905,14 @@ def create_model(
     
     Args:
         model_name: 模型名称
-            - 'physics_unet': 标准物理感知U-Net
+            - 'physics_unet'/'pasnet': 主模型
             - 'physics_unet_lite': 轻量级版本
             - 'physics_unet_large': 大型版本
-            - 'vanilla_unet': 原始U-Net (消融对比)
+            - 'vanilla_unet': 原始U-Net
+            - 'fuxi_da': FuXi-DA 对比骨干
+            - 'attn_unet'/'res_unet'/'pixel_mlp'/'fengwu': 其他对比骨干
+            - 'background_only': 仅背景输入基线
+            - 'obs_only': 仅观测输入基线
     
     Returns:
         nn.Module
@@ -1149,12 +1154,103 @@ class FengWuBaseline(nn.Module):
 
         out = self.output_head(d0)
         return out + self.bkg_skip(bkg)
+
+
+class BackgroundOnlyBaseline(nn.Module):
+    """仅使用背景场的对比基线，可选拼接辅助特征。"""
+
+    def __init__(
+        self,
+        obs_channels: int = 17,
+        bkg_channels: int = 37,
+        aux_channels: int = 4,
+        out_channels: int = 37,
+        base_channels: int = 64,
+    ):
+        super().__init__()
+        self.aux_channels = max(0, aux_channels)
+        in_ch = bkg_channels + self.aux_channels
+
+        self.stem = nn.Sequential(
+            ConvBNReLU(in_ch, base_channels, 3, 1, 1),
+            ResidualBlock(base_channels, dropout=0.1, use_se=False),
+            ResidualBlock(base_channels, dropout=0.1, use_se=False),
+        )
+        self.head = nn.Sequential(
+            ConvBNReLU(base_channels, base_channels, 3, 1, 1),
+            nn.Conv2d(base_channels, out_channels, 1),
+        )
+        self.bkg_skip = nn.Conv2d(bkg_channels, out_channels, 1)
+
+        n_params = sum(p.numel() for p in self.parameters())
+        print(f"[BackgroundOnlyBaseline] 参数量: {n_params:,}")
+
+    def forward(self, obs, bkg, mask, aux=None):
+        parts = [bkg]
+        if self.aux_channels > 0:
+            if aux is None:
+                aux = torch.zeros(
+                    bkg.shape[0], self.aux_channels, bkg.shape[2], bkg.shape[3],
+                    dtype=bkg.dtype, device=bkg.device
+                )
+            parts.append(aux)
+        x = torch.cat(parts, dim=1)
+        x = self.stem(x)
+        return self.head(x) + self.bkg_skip(bkg)
+
+
+class ObservationOnlyBaseline(nn.Module):
+    """仅使用观测场与掩码的对比基线，可选拼接辅助特征。"""
+
+    def __init__(
+        self,
+        obs_channels: int = 17,
+        bkg_channels: int = 37,
+        aux_channels: int = 4,
+        out_channels: int = 37,
+        base_channels: int = 64,
+    ):
+        super().__init__()
+        self.aux_channels = max(0, aux_channels)
+        in_ch = obs_channels + 1 + self.aux_channels
+
+        self.stem = nn.Sequential(
+            ConvBNReLU(in_ch, base_channels, 3, 1, 1),
+            ResidualBlock(base_channels, dropout=0.1, use_se=False),
+            ResidualBlock(base_channels, dropout=0.1, use_se=False),
+        )
+        self.head = nn.Sequential(
+            ConvBNReLU(base_channels, base_channels, 3, 1, 1),
+            nn.Conv2d(base_channels, out_channels, 1),
+        )
+        self.obs_skip = nn.Conv2d(obs_channels, out_channels, 1)
+
+        n_params = sum(p.numel() for p in self.parameters())
+        print(f"[ObservationOnlyBaseline] 参数量: {n_params:,}")
+
+    def forward(self, obs, bkg, mask, aux=None):
+        obs_valid = obs * mask
+        parts = [obs_valid, mask]
+        if self.aux_channels > 0:
+            if aux is None:
+                aux = torch.zeros(
+                    obs.shape[0], self.aux_channels, obs.shape[2], obs.shape[3],
+                    dtype=obs.dtype, device=obs.device
+                )
+            parts.append(aux)
+        x = torch.cat(parts, dim=1)
+        x = self.stem(x)
+        return self.head(x) + self.obs_skip(obs_valid)
+
+
 # 注册新模型到 create_model
 _EXTRA_MODELS = {
     'attn_unet': AttentionUNet,
     'pixel_mlp': PixelMLP,
     'res_unet': ResUNet,
     'fengwu': FengWuBaseline,
+    'background_only': BackgroundOnlyBaseline,
+    'obs_only': ObservationOnlyBaseline,
 }
 # =====================================================================
 # Part 10: Mamba Backbone (消融对比：替换 U-Net 骨干为 State Space Model)
