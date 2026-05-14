@@ -60,7 +60,7 @@ def load_era5_grib(grib_file):
             seen_levels.add(m.level)
             msgs_sorted.append(m)
     assert len(msgs_sorted) == 37, f"Expected 37 levels, got {len(msgs_sorted)} in {grib_file}"
-    data0, lats2d, lons2d = msgs_sorted[0].latlons()
+    lats2d, lons2d = msgs_sorted[0].latlons()
     lats_1d = lats2d[:, 0]
     lons_1d = lons2d[0, :]
     # m.values 比 m.data()[0] 快 4x (不重算 latlons meshgrid)
@@ -165,9 +165,13 @@ def recompute_stats(dst_dir, split='train'):
     sumsq = {}
     counts = {}
     keys = ['obs', 'bkg', 'target', 'aux']
+    skipped_invalid = 0
 
     for f in files:
         d = np.load(f, allow_pickle=False)
+        if 'target' not in d or d['target'].size == 0 or not np.isfinite(d['target']).all() or np.all(d['target'] == 0):
+            skipped_invalid += 1
+            continue
         for k in keys:
             if k not in d:
                 continue
@@ -195,6 +199,7 @@ def recompute_stats(dst_dir, split='train'):
 
     out = dst_dir / 'stats.npz'
     np.savez(str(out), **stats)
+    print(f'[stats] Skipped invalid files: {skipped_invalid}')
     print(f'[stats] Saved -> {out}')
 
 

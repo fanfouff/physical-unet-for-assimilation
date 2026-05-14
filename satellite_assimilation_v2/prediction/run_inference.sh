@@ -19,13 +19,13 @@ EVAL_SCRIPT="$SCRIPT_DIR/eval_all_experiments.py"
 DEFAULT_ROOT_64="/home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux64"
 DEFAULT_ROOT_128="/home/lrx/Unet/satellite_assimilation_v2/train_ddp/outputs/figures_ablation_comparison_noaux128"
 
-DEFAULT_TEST_ROOT_64="/data1/lrx/npz_64_real/test"
-DEFAULT_STATS_FILE_64="/data1/lrx/npz_64_real/stats.npz"
-DEFAULT_INCREMENT_STATS_64="/data1/lrx/npz_64_real/increment_stats.npz"
+DEFAULT_TEST_ROOT_64="/data3/lrx/era_obs/npz_64_real/test"
+DEFAULT_STATS_FILE_64="/data3/lrx/era_obs/npz_64_real/stats.npz"
+DEFAULT_INCREMENT_STATS_64="/data3/lrx/era_obs/npz_64_real/increment_stats.npz"
 
-DEFAULT_TEST_ROOT_128="/data1/lrx/npz_128_real/test"
-DEFAULT_STATS_FILE_128="/data1/lrx/npz_128_real/stats.npz"
-DEFAULT_INCREMENT_STATS_128="/data1/lrx/npz_128_real/increment_stats.npz"
+DEFAULT_TEST_ROOT_128="/data3/lrx/npz_128_A202604221458120255/test"
+DEFAULT_STATS_FILE_128="/data3/lrx/npz_128_A202604221458120255/stats.npz"
+DEFAULT_INCREMENT_STATS_128="/data3/lrx/npz_128_A202604221458120255/increment_stats.npz"
 
 # 先给默认值，后续会根据 ROOT_MODE 自动改写
 DEFAULT_TEST_ROOT="$DEFAULT_TEST_ROOT_64"

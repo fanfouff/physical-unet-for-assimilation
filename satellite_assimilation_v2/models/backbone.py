@@ -49,6 +49,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
+import importlib.util
 import math
 
 # 导入V2模块
@@ -1243,6 +1244,476 @@ class ObservationOnlyBaseline(nn.Module):
         return self.head(x) + self.obs_skip(obs_valid)
 
 
+_LEGACY_SWIN_CLASS = None
+
+
+def _load_legacy_swin_class():
+    global _LEGACY_SWIN_CLASS
+    if _LEGACY_SWIN_CLASS is not None:
+        return _LEGACY_SWIN_CLASS
+
+    legacy_path = Path('/home/lrx/lrx/swin_transformer_unet_skip_expand_decoder_sys.py')
+    if not legacy_path.exists():
+        raise FileNotFoundError(f'Legacy Swin-UNet file not found: {legacy_path}')
+
+    spec = importlib.util.spec_from_file_location('legacy_swin_unet', legacy_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f'Unable to load spec for legacy Swin-UNet: {legacy_path}')
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _LEGACY_SWIN_CLASS = module.SwinTransformerSys
+    return _LEGACY_SWIN_CLASS
+
+
+class SwinUNetWrapper(nn.Module):
+    """Adapter that exposes the legacy Swin-UNet with the current 4-input interface."""
+
+    def __init__(
+        self,
+        aux_channels: int = 0,
+        img_size: int = 64,
+        window_size: int = 4,
+        num_classes: int = 37,
+        **kwargs,
+    ):
+        super().__init__()
+        in_chans = 17 + 37 + 1 + int(aux_channels)
+        legacy_cls = _load_legacy_swin_class()
+        self.aux_channels = int(aux_channels)
+        self.net = legacy_cls(
+            img_size=img_size,
+            in_chans=in_chans,
+            num_classes=num_classes,
+            window_size=window_size,
+            **kwargs,
+        )
+
+    def forward(
+        self,
+        obs: torch.Tensor,
+        bkg: torch.Tensor,
+        mask: torch.Tensor,
+        aux: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        parts = [obs, bkg, mask]
+        if self.aux_channels > 0:
+            if aux is None:
+                aux = torch.zeros(
+                    obs.size(0),
+                    self.aux_channels,
+                    obs.size(2),
+                    obs.size(3),
+                    dtype=obs.dtype,
+                    device=obs.device,
+                )
+            parts.append(aux)
+        x = torch.cat(parts, dim=1)
+        return self.net(x)
+
+
+# =============================================================================
+# Part B9: PartialConv U-Net — 缺测鲁棒性对比基线
+# =============================================================================
+
+class PartialConv2d(nn.Module):
+    """
+    Partial Convolution Layer for irregular mask inpainting.
+
+    Reference: Liu et al., "Partial Convolutions for Image Inpainting", ECCV 2018.
+
+    Key mechanism:
+    1. Convolve only over valid (masked) pixels, re-weight by the ratio of
+       valid receptive field size.
+    2. After each convolution, update the mask: if at least one valid input
+       pixel contributed to the output, the output pixel is marked valid.
+    """
+
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 3,
+                 stride: int = 1, padding: int = 1, bias: bool = False):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.weight = nn.Parameter(
+            torch.empty(out_channels, in_channels, kernel_size, kernel_size)
+        )
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        self._mask_sum_kernel = None
+        nn.init.kaiming_normal_(self.weight, mode='fan_out', nonlinearity='relu')
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            x:    feature map  [B, C_in,  H, W]
+            mask: binary mask  [B, 1,     H, W]  (1.0 = valid, 0.0 = hole)
+        Returns:
+            out:  convolved feature map  [B, C_out, H', W']
+            new_mask: updated mask        [B, 1,     H', W']
+        """
+        # 1. 归一化掩码 (确保二进制)
+        mask = (mask > 0.0).float()
+
+        # 2. 计算每个输出位置的 valid 感受野总和
+        with torch.no_grad():
+            mask_sum = F.conv2d(
+                mask, torch.ones(1, 1, self.kernel_size, self.kernel_size,
+                                 device=mask.device),
+                stride=self.stride, padding=self.padding,
+            )
+            mask_sum = torch.clamp(mask_sum, min=1.0)
+            # 更新掩码: 至少有一个 valid 输入 pixel → output 标记为 valid
+            new_mask = (mask_sum > 0.0).float()
+
+        # 3. 仅在 valid 像素上进行卷积
+        x_masked = x * mask
+        raw_out = F.conv2d(x_masked, self.weight, self.bias,
+                           stride=self.stride, padding=self.padding)
+
+        # 4. 重缩放: 补偿 valid 像素比例
+        scale = self.kernel_size ** 2 / mask_sum
+        out = raw_out * scale
+
+        # 5. 重新应用掩码到输出 (边界区域如果是全空洞则置零)
+        out = out * new_mask
+
+        return out, new_mask
+
+
+class PartialConvBlock(nn.Module):
+    """PartialConv2d -> BatchNorm -> GELU"""
+
+    def __init__(self, in_ch: int, out_ch: int, kernel_size: int = 3,
+                 stride: int = 1, padding: int = 1):
+        super().__init__()
+        self.pconv = PartialConv2d(in_ch, out_ch, kernel_size, stride, padding)
+        self.bn = nn.BatchNorm2d(out_ch)
+        self.act = nn.GELU()
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        x, mask = self.pconv(x, mask)
+        x = self.act(self.bn(x))
+        return x, mask
+
+
+class PartialConvUNet(nn.Module):
+    """
+    PartialConv U-Net for gap-robust assimilation.
+
+    Architecture:
+      Encoder: PartialConvBlock x2 -> PartialConv stride=2 (downsample)  x4 stages
+      Bottleneck: PartialConvBlock x2
+      Decoder: Upsample -> PartialConv (skip fuse) -> PartialConvBlock  x4 stages
+      Output: 1x1 Conv -> add bkg skip
+
+    Mask semantics:
+      mask = obs validity mask [B, 1, H, W]  (1.0 = observed, 0.0 = gap)
+      The mask is passed through the PartialConv pipeline so the network
+      always knows which locations are observed vs. interpolated.
+
+    Interface: forward(obs, bkg, mask, aux=None) -> [B, 37, H, W]
+    """
+
+    def __init__(self, in_channels: int = 17 + 37, out_channels: int = 37,
+                 base_channels: int = 64, use_aux: bool = True,
+                 aux_channels: int = 4):
+        super().__init__()
+        self.use_aux = use_aux
+        img_ch = in_channels
+        if use_aux:
+            img_ch += aux_channels
+
+        C = base_channels
+        # ---- Encoder ----
+        self.enc0_1 = PartialConvBlock(img_ch, C)
+        self.enc0_2 = PartialConvBlock(C, C)
+        self.down0 = PartialConvBlock(C, C * 2, kernel_size=3, stride=2, padding=1)
+
+        self.enc1_1 = PartialConvBlock(C * 2, C * 2)
+        self.enc1_2 = PartialConvBlock(C * 2, C * 2)
+        self.down1 = PartialConvBlock(C * 2, C * 4, kernel_size=3, stride=2, padding=1)
+
+        self.enc2_1 = PartialConvBlock(C * 4, C * 4)
+        self.enc2_2 = PartialConvBlock(C * 4, C * 4)
+        self.down2 = PartialConvBlock(C * 4, C * 8, kernel_size=3, stride=2, padding=1)
+
+        self.enc3_1 = PartialConvBlock(C * 8, C * 8)
+        self.enc3_2 = PartialConvBlock(C * 8, C * 8)
+        self.down3 = PartialConvBlock(C * 8, C * 8, kernel_size=3, stride=2, padding=1)
+
+        # ---- Bottleneck ----
+        self.bottleneck_1 = PartialConvBlock(C * 8, C * 8)
+        self.bottleneck_2 = PartialConvBlock(C * 8, C * 8)
+
+        # ---- Decoder ----
+        self.up3 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.dec3_fuse = PartialConvBlock(C * 8 + C * 8, C * 8)  # skip + up
+        self.dec3_1 = PartialConvBlock(C * 8, C * 8)
+        self.dec3_2 = PartialConvBlock(C * 8, C * 8)
+
+        self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.dec2_fuse = PartialConvBlock(C * 8 + C * 4, C * 4)
+        self.dec2_1 = PartialConvBlock(C * 4, C * 4)
+        self.dec2_2 = PartialConvBlock(C * 4, C * 4)
+
+        self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.dec1_fuse = PartialConvBlock(C * 4 + C * 2, C * 2)
+        self.dec1_1 = PartialConvBlock(C * 2, C * 2)
+        self.dec1_2 = PartialConvBlock(C * 2, C * 2)
+
+        self.up0 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.dec0_fuse = PartialConvBlock(C * 2 + C, C)
+        self.dec0_1 = PartialConvBlock(C, C)
+        self.dec0_2 = PartialConvBlock(C, C)
+
+        # ---- Output ----
+        self.output_head = nn.Conv2d(C, out_channels, 1)
+        self.bkg_skip = nn.Conv2d(37, out_channels, 1)
+
+        n_params = sum(p.numel() for p in self.parameters())
+        print(f"[PartialConvUNet] 参数量: {n_params:,}")
+
+    def forward(self, obs: torch.Tensor, bkg: torch.Tensor,
+                mask: torch.Tensor, aux: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # Build image and mask
+        img_parts = [obs * mask, bkg]
+        if self.use_aux:
+            if aux is None:
+                aux = torch.zeros(obs.shape[0], 4, obs.shape[2], obs.shape[3],
+                                  dtype=obs.dtype, device=obs.device)
+            img_parts.append(aux)
+        img = torch.cat(img_parts, dim=1)
+
+        pmask = mask  # [B, 1, H, W]
+
+        # ---- Encoder ----
+        x, pmask0 = self.enc0_1(img, pmask)
+        x, pmask0 = self.enc0_2(x, pmask0)
+        skip0 = x
+        x, pmask1 = self.down0(x, pmask0)
+
+        x, pmask1 = self.enc1_1(x, pmask1)
+        x, pmask1 = self.enc1_2(x, pmask1)
+        skip1 = x
+        x, pmask2 = self.down1(x, pmask1)
+
+        x, pmask2 = self.enc2_1(x, pmask2)
+        x, pmask2 = self.enc2_2(x, pmask2)
+        skip2 = x
+        x, pmask3 = self.down2(x, pmask2)
+
+        x, pmask3 = self.enc3_1(x, pmask3)
+        x, pmask3 = self.enc3_2(x, pmask3)
+        skip3 = x
+        x, pmask4 = self.down3(x, pmask3)
+
+        # ---- Bottleneck ----
+        x, pmask4 = self.bottleneck_1(x, pmask4)
+        x, pmask4 = self.bottleneck_2(x, pmask4)
+
+        # ---- Decoder ----
+        x = self.up3(x)
+        if x.shape[2:] != skip3.shape[2:]:
+            x = F.interpolate(x, size=skip3.shape[2:], mode='bilinear', align_corners=True)
+        pmask4_up = F.interpolate(pmask4, size=skip3.shape[2:], mode='nearest')
+        pmask_skip3 = torch.clamp(pmask3 + pmask4_up, max=1.0)
+        x, _ = self.dec3_fuse(torch.cat([x, skip3], dim=1), pmask_skip3)
+        x, _ = self.dec3_1(x, pmask_skip3)
+        x, _ = self.dec3_2(x, pmask_skip3)
+
+        x = self.up2(x)
+        if x.shape[2:] != skip2.shape[2:]:
+            x = F.interpolate(x, size=skip2.shape[2:], mode='bilinear', align_corners=True)
+        pmask3_up = F.interpolate(pmask_skip3, size=skip2.shape[2:], mode='nearest')
+        pmask_skip2 = torch.clamp(pmask2 + pmask3_up, max=1.0)
+        x, _ = self.dec2_fuse(torch.cat([x, skip2], dim=1), pmask_skip2)
+        x, _ = self.dec2_1(x, pmask_skip2)
+        x, _ = self.dec2_2(x, pmask_skip2)
+
+        x = self.up1(x)
+        if x.shape[2:] != skip1.shape[2:]:
+            x = F.interpolate(x, size=skip1.shape[2:], mode='bilinear', align_corners=True)
+        pmask2_up = F.interpolate(pmask_skip2, size=skip1.shape[2:], mode='nearest')
+        pmask_skip1 = torch.clamp(pmask1 + pmask2_up, max=1.0)
+        x, _ = self.dec1_fuse(torch.cat([x, skip1], dim=1), pmask_skip1)
+        x, _ = self.dec1_1(x, pmask_skip1)
+        x, _ = self.dec1_2(x, pmask_skip1)
+
+        x = self.up0(x)
+        if x.shape[2:] != skip0.shape[2:]:
+            x = F.interpolate(x, size=skip0.shape[2:], mode='bilinear', align_corners=True)
+        pmask1_up = F.interpolate(pmask_skip1, size=skip0.shape[2:], mode='nearest')
+        pmask_skip0 = torch.clamp(pmask0 + pmask1_up, max=1.0)
+        x, _ = self.dec0_fuse(torch.cat([x, skip0], dim=1), pmask_skip0)
+        x, _ = self.dec0_1(x, pmask_skip0)
+        x, _ = self.dec0_2(x, pmask_skip0)
+
+        # ---- Output ----
+        out = self.output_head(x)
+        return out + self.bkg_skip(bkg)
+
+
+# =============================================================================
+# Part B10: SmaAt-UNet — 气象空间注意力U-Net对比基线
+# =============================================================================
+
+class SmaAtUNet(nn.Module):
+    """
+    SmaAt-UNet: Precipitation Nowcasting using a Small Attention-UNet Architecture.
+
+    Reference: Trebing et al., "SmaAt-UNet: Precipitation Nowcasting using a
+    Small Attention-UNet Architecture", 2021.
+
+    Key design:
+      - Standard U-Net encoder-decoder with CBAM after every double-conv block.
+      - CBAM (Convolutional Block Attention Module) combines channel attention
+        and spatial attention to focus on salient weather features.
+      - Lightweight yet competitive for spatial meteorological tasks.
+
+    Interface: forward(obs, bkg, mask, aux=None) -> [B, 37, H, W]
+    """
+
+    def __init__(self, in_channels: int = 17 + 37, out_channels: int = 37,
+                 base_channels: int = 64, use_aux: bool = True,
+                 aux_channels: int = 4):
+        super().__init__()
+        self.use_aux = use_aux
+        img_ch = in_channels
+        if use_aux:
+            img_ch += aux_channels
+
+        C = base_channels
+
+        # ---- Encoder Stage 0 (H x W) ----
+        self.enc0_conv1 = ConvBNReLU(img_ch, C, 3, 1, 1)
+        self.enc0_conv2 = ConvBNReLU(C, C, 3, 1, 1)
+        self.enc0_cbam = CBAM(C)
+        self.pool0 = nn.MaxPool2d(2)
+
+        # ---- Encoder Stage 1 (H/2 x W/2) ----
+        self.enc1_conv1 = ConvBNReLU(C, C * 2, 3, 1, 1)
+        self.enc1_conv2 = ConvBNReLU(C * 2, C * 2, 3, 1, 1)
+        self.enc1_cbam = CBAM(C * 2)
+        self.pool1 = nn.MaxPool2d(2)
+
+        # ---- Encoder Stage 2 (H/4 x W/4) ----
+        self.enc2_conv1 = ConvBNReLU(C * 2, C * 4, 3, 1, 1)
+        self.enc2_conv2 = ConvBNReLU(C * 4, C * 4, 3, 1, 1)
+        self.enc2_cbam = CBAM(C * 4)
+        self.pool2 = nn.MaxPool2d(2)
+
+        # ---- Encoder Stage 3 (H/8 x W/8) ----
+        self.enc3_conv1 = ConvBNReLU(C * 4, C * 8, 3, 1, 1)
+        self.enc3_conv2 = ConvBNReLU(C * 8, C * 8, 3, 1, 1)
+        self.enc3_cbam = CBAM(C * 8)
+        self.pool3 = nn.MaxPool2d(2)
+
+        # ---- Bottleneck (H/16 x W/16) ----
+        self.bottleneck_conv1 = ConvBNReLU(C * 8, C * 8, 3, 1, 1)
+        self.bottleneck_conv2 = ConvBNReLU(C * 8, C * 8, 3, 1, 1)
+        self.bottleneck_cbam = CBAM(C * 8)
+
+        # ---- Decoder Stage 3 ----
+        self.up3 = nn.ConvTranspose2d(C * 8, C * 8, 4, stride=2, padding=1)
+        self.dec3_conv1 = ConvBNReLU(C * 8 * 2, C * 8, 3, 1, 1)  # *2 for skip
+        self.dec3_conv2 = ConvBNReLU(C * 8, C * 8, 3, 1, 1)
+        self.dec3_cbam = CBAM(C * 8)
+
+        # ---- Decoder Stage 2 ----
+        self.up2 = nn.ConvTranspose2d(C * 8, C * 4, 4, stride=2, padding=1)
+        self.dec2_conv1 = ConvBNReLU(C * 4 * 2, C * 4, 3, 1, 1)
+        self.dec2_conv2 = ConvBNReLU(C * 4, C * 4, 3, 1, 1)
+        self.dec2_cbam = CBAM(C * 4)
+
+        # ---- Decoder Stage 1 ----
+        self.up1 = nn.ConvTranspose2d(C * 4, C * 2, 4, stride=2, padding=1)
+        self.dec1_conv1 = ConvBNReLU(C * 2 * 2, C * 2, 3, 1, 1)
+        self.dec1_conv2 = ConvBNReLU(C * 2, C * 2, 3, 1, 1)
+        self.dec1_cbam = CBAM(C * 2)
+
+        # ---- Decoder Stage 0 ----
+        self.up0 = nn.ConvTranspose2d(C * 2, C, 4, stride=2, padding=1)
+        self.dec0_conv1 = ConvBNReLU(C * 2, C, 3, 1, 1)
+        self.dec0_conv2 = ConvBNReLU(C, C, 3, 1, 1)
+        self.dec0_cbam = CBAM(C)
+
+        # ---- Output ----
+        self.output_head = nn.Conv2d(C, out_channels, 1)
+        self.bkg_skip = nn.Conv2d(37, out_channels, 1)
+
+        n_params = sum(p.numel() for p in self.parameters())
+        print(f"[SmaAtUNet] 参数量: {n_params:,}")
+
+    def forward(self, obs: torch.Tensor, bkg: torch.Tensor,
+                mask: torch.Tensor, aux: Optional[torch.Tensor] = None) -> torch.Tensor:
+        parts = [obs * mask, bkg]
+        if self.use_aux:
+            if aux is None:
+                aux = torch.zeros(obs.shape[0], 4, obs.shape[2], obs.shape[3],
+                                  dtype=obs.dtype, device=obs.device)
+            parts.append(aux)
+        x = torch.cat(parts, dim=1)
+
+        # ---- Encoder ----
+        x = self.enc0_conv1(x)
+        e0 = self.enc0_cbam(self.enc0_conv2(x))
+
+        x = self.pool0(e0)
+        x = self.enc1_conv1(x)
+        e1 = self.enc1_cbam(self.enc1_conv2(x))
+
+        x = self.pool1(e1)
+        x = self.enc2_conv1(x)
+        e2 = self.enc2_cbam(self.enc2_conv2(x))
+
+        x = self.pool2(e2)
+        x = self.enc3_conv1(x)
+        e3 = self.enc3_cbam(self.enc3_conv2(x))
+
+        # ---- Bottleneck ----
+        x = self.pool3(e3)
+        x = self.bottleneck_conv1(x)
+        x = self.bottleneck_cbam(self.bottleneck_conv2(x))
+
+        # ---- Decoder ----
+        x = self.up3(x)
+        if x.shape[2:] != e3.shape[2:]:
+            x = F.interpolate(x, size=e3.shape[2:], mode='bilinear', align_corners=True)
+        x = torch.cat([x, e3], dim=1)
+        x = self.dec3_conv1(x)
+        x = self.dec3_cbam(self.dec3_conv2(x))
+
+        x = self.up2(x)
+        if x.shape[2:] != e2.shape[2:]:
+            x = F.interpolate(x, size=e2.shape[2:], mode='bilinear', align_corners=True)
+        x = torch.cat([x, e2], dim=1)
+        x = self.dec2_conv1(x)
+        x = self.dec2_cbam(self.dec2_conv2(x))
+
+        x = self.up1(x)
+        if x.shape[2:] != e1.shape[2:]:
+            x = F.interpolate(x, size=e1.shape[2:], mode='bilinear', align_corners=True)
+        x = torch.cat([x, e1], dim=1)
+        x = self.dec1_conv1(x)
+        x = self.dec1_cbam(self.dec1_conv2(x))
+
+        x = self.up0(x)
+        if x.shape[2:] != e0.shape[2:]:
+            x = F.interpolate(x, size=e0.shape[2:], mode='bilinear', align_corners=True)
+        x = torch.cat([x, e0], dim=1)
+        x = self.dec0_conv1(x)
+        x = self.dec0_cbam(self.dec0_conv2(x))
+
+        # ---- Output ----
+        out = self.output_head(x)
+        return out + self.bkg_skip(bkg)
+
+
 # 注册新模型到 create_model
 _EXTRA_MODELS = {
     'attn_unet': AttentionUNet,
@@ -1251,6 +1722,9 @@ _EXTRA_MODELS = {
     'fengwu': FengWuBaseline,
     'background_only': BackgroundOnlyBaseline,
     'obs_only': ObservationOnlyBaseline,
+    'swin_unet': SwinUNetWrapper,
+    'smaat_unet': SmaAtUNet,
+    'pconv_unet': PartialConvUNet,
 }
 # =====================================================================
 # Part 10: Mamba Backbone (消融对比：替换 U-Net 骨干为 State Space Model)
@@ -1665,4 +2139,3 @@ def create_model(model_name: str = 'physics_unet', **kwargs) -> 'nn.Module':
         kwargs.pop('config', None)  # extra models do not accept UNetConfig
         return _EXTRA_MODELS[model_name](**kwargs)
     return _orig_create_model(model_name, **kwargs)
-

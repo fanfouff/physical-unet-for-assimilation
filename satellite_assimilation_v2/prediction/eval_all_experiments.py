@@ -446,6 +446,7 @@ def _load_model(ckpt_path, device="cuda"):
         return bool(v)
 
     use_aux = _as_bool(getattr(model_args, "use_aux", True))
+    mask_aware = _as_bool(getattr(model_args, "mask_aware", True))
     sd = {k.replace("module.", ""): v for k, v in ckpt["model_state_dict"].items()}
 
     # 对 b11/b12 这类基线，从 checkpoint 的 stem 输入通道自动推断 aux 通道数。
@@ -460,6 +461,22 @@ def _load_model(ckpt_path, device="cuda"):
 
     if inferred_aux_channels is not None:
         use_aux = inferred_aux_channels > 0
+
+    stem_w = sd.get("stem.0.conv.weight", None)
+    expected_total_in_channels = None
+    expected_obs_channels = None
+    if stem_w is not None and hasattr(stem_w, "shape") and len(stem_w.shape) == 4:
+        expected_total_in_channels = int(stem_w.shape[1])
+        aux_ch = 4 if use_aux else 0
+        mask_ch = 1 if mask_aware else 0
+        if model_name == "background_only":
+            expected_obs_channels = 0
+        elif model_name == "obs_only":
+            expected_obs_channels = expected_total_in_channels - aux_ch - mask_ch
+        else:
+            expected_obs_channels = expected_total_in_channels - 37 - aux_ch - mask_ch
+        if expected_obs_channels is not None and expected_obs_channels < 0:
+            expected_obs_channels = None
 
     if model_name == "fuxi_da":
         aux_ch = inferred_aux_channels if inferred_aux_channels is not None else (4 if use_aux else 0)
@@ -480,7 +497,48 @@ def _load_model(ckpt_path, device="cuda"):
 
     model.load_state_dict(sd, strict=False)
     model = model.to(device).eval()
+    model._codex_model_name = model_name
+    model._codex_use_aux = use_aux
+    model._codex_mask_aware = mask_aware
+    model._codex_expected_total_in_channels = expected_total_in_channels
+    model._codex_expected_obs_channels = expected_obs_channels
     return model, model_args, use_aux
+
+
+def _actual_input_channels(model, obs_n, bkg_n, mask, aux) -> int:
+    model_name = getattr(model, "_codex_model_name", "")
+    use_aux = bool(getattr(model, "_codex_use_aux", False))
+    mask_aware = bool(getattr(model, "_codex_mask_aware", True))
+    aux_ch = int(aux.shape[1]) if (use_aux and aux is not None) else 0
+    mask_ch = int(mask.shape[1]) if (mask_aware and mask is not None) else 0
+
+    if model_name == "background_only":
+        return int(bkg_n.shape[1]) + aux_ch
+    if model_name == "obs_only":
+        return int(obs_n.shape[1]) + aux_ch + mask_ch
+    return int(obs_n.shape[1]) + int(bkg_n.shape[1]) + aux_ch + mask_ch
+
+
+def _validate_model_dataset_compatibility(model, npz_path, obs_n, bkg_n, mask, aux):
+    expected_obs = getattr(model, "_codex_expected_obs_channels", None)
+    expected_total = getattr(model, "_codex_expected_total_in_channels", None)
+    model_name = getattr(model, "_codex_model_name", "unknown")
+
+    if expected_obs is None and expected_total is None:
+        return
+
+    actual_obs = int(obs_n.shape[1])
+    actual_total = _actual_input_channels(model, obs_n, bkg_n, mask, aux)
+
+    if expected_obs is not None and actual_obs != expected_obs:
+        hint = ""
+        if expected_obs == 17 and actual_obs == 13:
+            hint = " Likely FY3D 13-channel data is being evaluated with a FY3F 17-channel checkpoint."
+        raise RuntimeError(
+            "Dataset/checkpoint channel mismatch: "
+            f"{Path(npz_path).name} provides obs={actual_obs}, total_input={actual_total}, "
+            f"but checkpoint '{model_name}' expects obs={expected_obs}, total_input={expected_total}.{hint}"
+        )
 
 
 def _prepare_inputs(npz_path, stats, use_aux, device="cuda"):
@@ -543,11 +601,22 @@ def evaluate_dl_model(ckpt_path, test_files, stats, inc_stats, device="cuda"):
         try:
             inputs = _prepare_inputs(test_files[0], stats, use_aux, device)
             obs_s, bkg_s, mask_s, aux_s = inputs[:4]
+            _validate_model_dataset_compatibility(model, test_files[0], obs_s, bkg_s, mask_s, aux_s)
             sample_inputs = (obs_s, bkg_s, mask_s, aux_s)
             gflops_val = compute_gflops(model, sample_inputs, device)
             mem_inf_mb, mem_train_mb = measure_vram(model, sample_inputs, device)
         except Exception as e:
-            print(f"    [WARN] 资源测量失败: {e}")
+            print(f"    [WARN] 预检查/资源测量失败: {e}")
+            return {
+                "rmse": float("nan"), "rmse_bkg": float("nan"),
+                "mae": float("nan"), "bias": float("nan"), "corr": float("nan"),
+                "n_files": 0,
+                "per_level_rmse": np.full(37, np.nan),
+                "per_level_rmse_bkg": np.full(37, np.nan),
+                "params_m": params_m, "gflops_inf": gflops_val,
+                "mem_inf_mb": mem_inf_mb, "mem_train_mb": mem_train_mb,
+                "per_sample_rmse": [], "per_sample_rmse_bkg": [],
+            }
 
     tgt_norm = LevelwiseNormalizer(stats["target_mean"], stats["target_std"])
     inc_norm = LevelwiseNormalizer(inc_stats["inc_mean"], inc_stats["inc_std"]) if inc_stats else None
@@ -564,6 +633,7 @@ def evaluate_dl_model(ckpt_path, test_files, stats, inc_stats, device="cuda"):
         try:
             inputs = _prepare_inputs(f, stats, use_aux, device)
             obs_n, bkg_n, mask_t, aux_t, bkg_phys, tgt_phys = inputs[:6]
+            _validate_model_dataset_compatibility(model, f, obs_n, bkg_n, mask_t, aux_t)
         except Exception:
             continue
 
@@ -716,6 +786,9 @@ def evaluate_gap_robustness(experiments: list, test_files: List[Path], stats: di
         if not Path(ckpt).exists(): continue
         try:
             model, _, use_aux = _load_model(ckpt, device)
+            if test_sub:
+                pre_inputs = _prepare_inputs(test_sub[0], stats, use_aux, device)
+                _validate_model_dataset_compatibility(model, test_sub[0], *pre_inputs[:4])
             results_per_ratio = {r: [] for r in gap_ratios}
 
             for f in tqdm(test_sub, desc=f"  Gap Robustness: {exp['label']}", leave=False):

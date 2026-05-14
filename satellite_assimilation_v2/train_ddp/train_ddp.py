@@ -254,7 +254,9 @@ def parse_args() -> argparse.Namespace:
                              choices=['physics_unet', 'physics_unet_lite',
                                      'physics_unet_large', 'vanilla_unet', 'fuxi_da',
                          'attn_unet', 'pixel_mlp', 'res_unet', 'fengwu', 'mamba',
-                         'pasnet', 'background_only', 'obs_only'],
+                         'swin_unet',
+                         'pasnet', 'background_only', 'obs_only',
+                         'smaat_unet', 'pconv_unet'],
                              help='模型类型')
     model_group.add_argument('--fusion_mode', type=str, default='gated',
                              choices=['concat', 'add', 'gated'],
@@ -471,8 +473,8 @@ class CombinedLoss(nn.Module):
     
     def gradient_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         B, C, H, W = pred.shape
-        pred_flat = pred.view(B * C, 1, H, W)
-        target_flat = target.view(B * C, 1, H, W)
+        pred_flat = pred.reshape(B * C, 1, H, W)
+        target_flat = target.reshape(B * C, 1, H, W)
         
         pred_gx = F.conv2d(pred_flat, self.sobel_x, padding=1)
         pred_gy = F.conv2d(pred_flat, self.sobel_y, padding=1)
@@ -1106,7 +1108,7 @@ def main():
             deep_supervision=args.deep_supervision
         )
         model = create_model(args.model, config=config)
-    elif args.model in ('fuxi_da', 'fengwu', 'background_only', 'obs_only'):
+    elif args.model in ('fuxi_da', 'fengwu', 'background_only', 'obs_only', 'swin_unet'):
         # FuXi-DA uses aux_channels to size its first fusion conv. Keep it
         # consistent with runtime aux usage to avoid channel mismatch.
         model = create_model(args.model, aux_channels=4 if args.use_aux else 0)
@@ -1115,6 +1117,9 @@ def main():
                             fusion_mode=args.fusion_mode,
                             use_aux=args.use_aux,
                             mask_aware=args.mask_aware)
+    elif args.model in ('smaat_unet', 'pconv_unet'):
+        model = create_model(args.model, use_aux=args.use_aux,
+                             aux_channels=4 if args.use_aux else 0)
     else:
         model = create_model(args.model)
     
