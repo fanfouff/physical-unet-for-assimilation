@@ -134,7 +134,7 @@ def _normalize_split_paths(paths: List[str], data_root: Path) -> List[str]:
         pp = Path(p)
         if not pp.is_absolute():
             pp = data_root / pp
-        out.append(str(pp.resolve()))
+        out.append(os.path.abspath(str(pp)))  # abspath avoids slow FUSE resolve()
     return out
 
 
@@ -145,7 +145,7 @@ def build_or_load_split(
     rank: int,
 ) -> Tuple[Dict[str, List[str]], Path]:
     """构建或加载 train/val/test 划分，支持可复现保存。"""
-    all_files = sorted([str(Path(f).resolve()) for f in file_list])
+    all_files = sorted([os.path.abspath(str(f)) for f in file_list])  # abspath avoids slow FUSE resolve()
     split_path = Path(args.split_file).expanduser() if args.split_file else (data_root / 'dataset_split.json')
 
     loaded = False
@@ -267,6 +267,8 @@ def parse_args() -> argparse.Namespace:
     model_group.add_argument('--mask_aware', type=str, default='true',
                              choices=['true', 'false'],
                              help='是否使用掩码感知')
+    model_group.add_argument('--aux_channels', type=int, default=4,
+                             help='辅助特征通道数 (1=仅landmask, 4=lat/lon/sza/landmask)')
     model_group.add_argument('--use_spectral_stem', type=str, default='true',
                              help='是否使用SpectralAdapterStemV2 (false=消融V4: 标准卷积Stem)')
     model_group.add_argument('--deep_supervision', type=str, default='false',
@@ -962,6 +964,7 @@ def main():
             bkg_data=bkg,
             target_data=target,
             aux_data=aux if args.use_aux else None,
+            aux_channels=args.aux_channels,
             compute_stats=True
         )
 
@@ -1014,7 +1017,7 @@ def main():
             stats_path = Path(args.output_dir) / args.exp_name / 'train_stats.npz'
             if is_main_process(rank):
                 stats_path.parent.mkdir(parents=True, exist_ok=True)
-                stats_ds = LazySatelliteERA5Dataset(file_list=train_files, use_aux=args.use_aux)
+                stats_ds = LazySatelliteERA5Dataset(file_list=train_files, use_aux=args.use_aux, aux_channels=args.aux_channels)
                 stats_ds.compute_statistics(save_path=str(stats_path))
                 print(f"  ✓ 训练统计量已保存: {stats_path}")
             if world_size > 1:
@@ -1031,10 +1034,11 @@ def main():
             obs_normalizer=obs_norm,
             bkg_normalizer=bkg_norm,
             target_normalizer=tgt_norm,
-            use_aux=args.use_aux
+            use_aux=args.use_aux,
+            aux_channels=args.aux_channels
         )
 
-        index_map = {str(Path(f).resolve()): i for i, f in enumerate(all_files_sorted)}
+        index_map = {os.path.abspath(str(f)): i for i, f in enumerate(all_files_sorted)}  # abspath avoids slow FUSE resolve()
         train_idx = [index_map[f] for f in train_files if f in index_map]
         val_idx = [index_map[f] for f in val_files if f in index_map]
         test_idx = [index_map[f] for f in test_files if f in index_map]
@@ -1105,13 +1109,14 @@ def main():
             use_aux=args.use_aux,
             mask_aware=args.mask_aware,
             use_spectral_stem=args.use_spectral_stem,
-            deep_supervision=args.deep_supervision
+            deep_supervision=args.deep_supervision,
+            aux_channels=args.aux_channels
         )
         model = create_model(args.model, config=config)
     elif args.model in ('fuxi_da', 'fengwu', 'background_only', 'obs_only', 'swin_unet'):
         # FuXi-DA uses aux_channels to size its first fusion conv. Keep it
         # consistent with runtime aux usage to avoid channel mismatch.
-        model = create_model(args.model, aux_channels=4 if args.use_aux else 0)
+        model = create_model(args.model, aux_channels=args.aux_channels if args.use_aux else 0)
     elif args.model == 'mamba':
         model = create_model('mamba',
                             fusion_mode=args.fusion_mode,
@@ -1119,7 +1124,7 @@ def main():
                             mask_aware=args.mask_aware)
     elif args.model in ('smaat_unet', 'pconv_unet'):
         model = create_model(args.model, use_aux=args.use_aux,
-                             aux_channels=4 if args.use_aux else 0)
+                             aux_channels=args.aux_channels if args.use_aux else 0)
     else:
         model = create_model(args.model)
     
